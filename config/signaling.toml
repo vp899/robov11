@@ -1,0 +1,23 @@
+[server]
+bind = "0.0.0.0"
+port = 9500
+health_port = 9501
+threads = 0
+max_connections = 1000000
+
+[redis]
+url = "redis://localhost:6379"
+pool_size = 64
+
+[auth]
+# If false, skips token verification (dev mode)
+require_auth = true
+token_ttl_sec = 86400
+
+[rooms]
+max_rooms = 100000
+max_clients_per_room = 100
+
+[logging]
+level = "info"
+facility = "daemon"

@@ -1,0 +1,218 @@
+// ──────────────────────────────────────────────────────────────────────
+// RoboControl Protocol Schema
+// Version: 1.0.0
+//
+// This file defines all message types and their binary layout.
+// Wire format is big-endian (network byte order).
+// ──────────────────────────────────────────────────────────────────────
+
+syntax = "proto2";
+package robocontrol;
+
+// ── Packet Types ──────────────────────────────────────────────────────
+enum PacketType {
+    HELLO       = 0x01;   // Client → Server: initiate connection
+    HELLO_ACK   = 0x02;   // Server → Client: accept connection
+    DATA        = 0x03;   // Bidirectional: application data
+    ACK         = 0x04;   // Bidirectional: cumulative acknowledgment
+    NACK        = 0x05;   // Bidirectional: selective negative ack
+    PING        = 0x06;   // Bidirectional: keepalive
+    PONG        = 0x07;   // Bidirectional: keepalive response
+    RELAY_REQ   = 0x08;   // Client → Server: request relay
+    RELAY_ACK   = 0x09;   // Server → Client: relay granted
+    AUTH_REQ    = 0x0A;   // Client → Server: authenticate
+    AUTH_ACK    = 0x0B;   // Server → Client: auth result
+    FIN         = 0x0C;   // Bidirectional: close connection
+}
+
+// ── Packet Header (32 bytes) ──────────────────────────────────────────
+//
+//  0                   1                   2                   3
+//  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |                         Magic (0x52434F4E)                   |  [0-3]
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |         Version (16)          |          Type (16)            |  [4-7]
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |                         Sequence Number                       |  [8-11]
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |                      Acknowledgment Number                    |  [12-15]
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |                                                               |
+// |                      Timestamp (64 bits)                      |
+// |                                                               |  [16-23]
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |       Payload Length (16)     |          Flags (16)           |  [24-27]
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |                        Connection ID                          |  [28-31]
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+message PacketHeader {
+    required uint32 magic         = 1;   // 0x52434F4E ("RCON")
+    required uint32 version       = 2;   // Protocol version (1)
+    required uint32 type          = 3;   // PacketType enum
+    required uint32 seq           = 4;   // Sequence number
+    required uint32 ack           = 5;   // Cumulative ACK
+    required uint64 timestamp     = 6;   // Microseconds since epoch
+    required uint32 payload_len   = 7;   // Payload bytes following header
+    required uint32 flags         = 8;   // Bit flags
+    required uint32 conn_id       = 9;   // Connection identifier
+}
+
+// ── Handshake: ClientHello ────────────────────────────────────────────
+//
+// Sent by client to initiate connection. Contains:
+// - Protocol version
+// - Connection ID (client-chosen)
+// - Random nonce (32 bytes) for replay protection
+// - X25519 public key (32 bytes) for ECDHE
+// - Supported cipher suites
+// - Client certificate (optional)
+
+message ClientHello {
+    required uint32 version           = 1;
+    required uint32 conn_id           = 2;
+    required bytes  client_nonce      = 3;   // 32 bytes random
+    required bytes  client_pubkey     = 4;   // 32 bytes X25519
+    repeated uint32 cipher_suites     = 5;   // 1=AES-GCM, 2=ChaCha20
+    optional bytes  client_cert       = 6;   // X.509 DER
+}
+
+// ── Handshake: ServerHello ────────────────────────────────────────────
+//
+// Sent by server in response to ClientHello. Contains:
+// - Selected cipher suite
+// - Server nonce (32 bytes)
+// - X25519 public key (32 bytes)
+// - Server certificate (optional)
+// - Starting sequence number
+
+message ServerHello {
+    required uint32 version           = 1;
+    required uint32 conn_id           = 2;
+    required uint32 selected_cipher   = 3;
+    required bytes  server_nonce      = 4;   // 32 bytes random
+    required bytes  server_pubkey     = 5;   // 32 bytes X25519
+    required uint32 server_seq_start  = 6;
+    optional bytes  server_cert       = 7;   // X.509 DER
+}
+
+// ── Handshake: Finish ─────────────────────────────────────────────────
+//
+// Sent by both sides after key derivation to confirm handshake.
+// Contains HMAC of all handshake messages using derived keys.
+
+message HandshakeFinish {
+    required uint32 conn_id           = 1;
+    required bytes  verify_data       = 2;   // 32 bytes HMAC-SHA256
+}
+
+// ── Data Payload ──────────────────────────────────────────────────────
+//
+// Application data with stream multiplexing.
+// Stream 0 = control, Stream 1-7 = camera feeds.
+
+message DataPayload {
+    required uint32 stream_id         = 1;   // 0=control, 1-7=video
+    required bytes  data              = 2;   // Encrypted payload
+}
+
+// ── SACK Block ────────────────────────────────────────────────────────
+//
+// Selective acknowledgment for out-of-order delivery.
+
+message SackBlock {
+    required uint32 start_seq         = 1;
+    required uint32 end_seq           = 2;
+}
+
+message Sack {
+    required uint32 cum_ack           = 1;   // Cumulative ACK
+    repeated SackBlock blocks         = 2;   // SACK ranges
+}
+
+// ── Relay Request ─────────────────────────────────────────────────────
+//
+// Sent when P2P connection fails, requesting relay fallback.
+
+message RelayRequest {
+    required uint32 conn_id           = 1;
+    required bytes  peer_addr         = 2;   // sockaddr (IPv4/IPv6)
+    required uint32 requested_bw      = 3;   // Max bandwidth (bytes/sec)
+}
+
+// ── Auth Request ──────────────────────────────────────────────────────
+//
+// Token-based authentication.
+
+message AuthRequest {
+    required uint32 conn_id           = 1;
+    required bytes  token             = 2;   // HMAC-SHA256 token
+    required bytes  device_id         = 3;   // Device identifier
+}
+
+message AuthResponse {
+    required uint32 conn_id           = 1;
+    required bool   success           = 2;
+    optional string error_msg         = 3;
+}
+
+// ── Control Commands ──────────────────────────────────────────────────
+//
+// Remote control commands for robot.
+
+enum CommandType {
+    MOTOR_CMD       = 0x01;
+    CAMERA_SWITCH   = 0x02;
+    PTZ_CONTROL     = 0x03;   // Pan-Tilt-Zoom
+    EMERGENCY_STOP  = 0x04;
+    CONFIG_UPDATE   = 0x05;
+    FIRMWARE_OTA    = 0x06;
+}
+
+message ControlCommand {
+    required CommandType type          = 1;
+    required uint32 sequence           = 2;
+    required uint64 timestamp          = 3;
+    optional bytes  payload            = 4;   // Command-specific data
+}
+
+// ── Video Frame Header ────────────────────────────────────────────────
+//
+// Precedes each video frame in the data stream.
+
+message VideoFrameHeader {
+    required uint32 camera_id          = 1;   // 0-7
+    required uint32 width              = 2;
+    required uint32 height             = 3;
+    required uint32 fps                = 4;
+    required uint32 codec              = 5;   // 0=H.264, 1=H.265, 2=MJPEG
+    required uint64 pts                = 6;   // Presentation timestamp
+    required bool   is_keyframe        = 7;
+    required bytes  frame_data         = 8;   // Encoded frame
+}
+
+// ── Error Codes ───────────────────────────────────────────────────────
+
+enum ErrorCode {
+    OK                  = 0;
+    INVALID_MAGIC       = 1;
+    UNSUPPORTED_VERSION = 2;
+    AUTH_FAILED         = 3;
+    RATE_LIMITED        = 4;
+    SESSION_NOT_FOUND   = 5;
+    RELAY_UNAVAILABLE   = 6;
+    INTERNAL_ERROR      = 7;
+    CONNECTION_CLOSED   = 8;
+}
+
+// ── Configuration Constants ───────────────────────────────────────────
+
+const uint32 MAGIC           = 0x52434F4E;   // "RCON"
+const uint32 VERSION         = 1;
+const uint32 MAX_PAYLOAD     = 1400;
+const uint32 MAX_CONNECTIONS = 10000000;     // 10M
+const uint32 HEADER_SIZE     = 32;
+const uint32 HANDSHAKE_TIMEOUT_MS = 5000;
+const uint32 KEEPALIVE_INTERVAL_MS = 30000;
+const uint32 KEY_ROTATION_INTERVAL = 10000;  // packets

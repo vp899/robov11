@@ -1,0 +1,31 @@
+[server]
+bind = "0.0.0.0"
+port = 9800
+health_port = 9801
+max_connections = 5000
+
+[redis]
+url = "redis://localhost:6379"
+
+[tiers]
+# Free tier
+free_max_robots = 1
+free_daily_bytes = 104857600        # 100MB
+
+# Pro tier
+pro_max_robots = 10
+pro_daily_bytes = 10737418240       # 10GB
+pro_price_cents = 2900              # $29/month
+
+# Enterprise tier
+enterprise_max_robots = 0           # unlimited
+enterprise_daily_bytes = 0          # unlimited
+enterprise_price_cents = 9900       # $99/month
+
+[alerts]
+overage_webhook = ""
+overage_threshold_pct = 80
+
+[logging]
+level = "info"
+facility = "daemon"

@@ -1,0 +1,189 @@
+# =============================================================================
+# docker-compose.test.yml — Test environment with all services + test runner
+# =============================================================================
+
+version: "3.9"
+
+x-common-env: &common-env
+  REDIS_URL: redis://redis:6379/0
+  LOG_LEVEL: debug
+  METRICS_ENABLED: "false"
+  NODE_ENV: test
+
+services:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Redis
+  # ─────────────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7.0-alpine
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - testnet
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Signaling Server
+  # ─────────────────────────────────────────────────────────────────────────────
+  signaling:
+    build:
+      context: .
+      dockerfile: Dockerfile.signaling
+    environment:
+      <<: *common-env
+      SIGNALING_WS_PORT: "9600"
+      SIGNALING_HTTP_PORT: "9601"
+      SIGNALING_GOSSIP_PORT: "9602"
+      RELAY_HOSTS: relay:9500
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9601/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - testnet
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Relay Server
+  # ─────────────────────────────────────────────────────────────────────────────
+  relay:
+    build:
+      context: .
+      dockerfile: Dockerfile.relay
+    environment:
+      <<: *common-env
+      RELAY_CONTROL_PORT: "9500"
+      RELAY_DATA_PORT: "9501"
+      SIGNALING_HOSTS: signaling:9601
+      MAX_CONNECTIONS: "1000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9500/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - testnet
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Auth Service
+  # ─────────────────────────────────────────────────────────────────────────────
+  auth:
+    build:
+      context: .
+      dockerfile: Dockerfile.auth
+    environment:
+      <<: *common-env
+      AUTH_PORT: "9700"
+      JWT_SECRET: "test-jwt-secret-do-not-use-in-production"
+      TOKEN_EXPIRY_SECONDS: "300"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9700/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - testnet
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Billing Service
+  # ─────────────────────────────────────────────────────────────────────────────
+  billing:
+    build:
+      context: .
+      dockerfile: Dockerfile.billing
+    environment:
+      <<: *common-env
+      BILLING_PORT: "9800"
+      BILLING_DB_URL: redis://redis:6379/1
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9800/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - testnet
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Test Runner
+  # ─────────────────────────────────────────────────────────────────────────────
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.build
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "Waiting for all services to be healthy..."
+        until curl -sf http://auth:9700/health && \
+              curl -sf http://billing:9800/health && \
+              curl -sf http://signaling:9601/health && \
+              curl -sf http://relay:9500/health; do
+          echo "  Waiting..."; sleep 2;
+        done
+        echo "All services healthy. Running tests..."
+        cd /opt/robocontrol && \
+        ./bin/test_runner --all --output=/results/test-report.xml --format=junit
+    environment:
+      <<: *common-env
+      AUTH_URL: http://auth:9700
+      BILLING_URL: http://billing:9800
+      SIGNALING_URL: http://signaling:9601
+      RELAY_CONTROL_URL: http://relay:9500
+      RELAY_DATA_URL: http://relay:9501
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - test-results:/results
+    depends_on:
+      signaling:
+        condition: service_healthy
+      relay:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+      billing:
+        condition: service_healthy
+    networks:
+      - testnet
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Code Coverage Reporter
+  # ─────────────────────────────────────────────────────────────────────────────
+  coverage:
+    image: alpine:3.18
+    command: >
+      sh -c "echo 'Coverage data collected at /coverage' && ls -la /coverage"
+    volumes:
+      - coverage-data:/coverage
+    networks:
+      - testnet
+    profiles:
+      - coverage
+
+networks:
+  testnet:
+    driver: bridge
+
+volumes:
+  test-results:
+    driver: local
+  coverage-data:
+    driver: local

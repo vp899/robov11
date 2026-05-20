@@ -1,0 +1,87 @@
+# =============================================================================
+# Dockerfile.build — Multi-stage production build for RoboControl
+# =============================================================================
+
+# ---------- Stage 1: Builder ----------
+FROM ubuntu:22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        gcc \
+        g++ \
+        make \
+        cmake \
+        pkg-config \
+        libssl-dev \
+        libhiredis-dev \
+        libjson-c-dev \
+        libcurl4-openssl-dev \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Copy source tree
+COPY src/ ./src/
+COPY include/ ./include/
+COPY Makefile CMakeLists.txt ./
+
+# Build all targets (relay, signaling, auth, billing)
+RUN if [ -f CMakeLists.txt ]; then \
+        mkdir -p cmake-build && cd cmake-build && \
+        cmake .. -DCMAKE_BUILD_TYPE=Release \
+                 -DCMAKE_C_FLAGS="-O2 -Wall -Wextra -Werror" \
+                 -DCMAKE_INSTALL_PREFIX=/build/output && \
+        make -j"$(nproc)" && make install; \
+    elif [ -f Makefile ]; then \
+        make -j"$(nproc)" all DESTDIR=/build/output; \
+    fi
+
+# ---------- Stage 2: Runtime ----------
+FROM ubuntu:22.04 AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libssl3 \
+        libhiredis0.14 \
+        libjson-c5 \
+        libcurl4 \
+        ca-certificates \
+        curl \
+        tini \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd -r robocontrol && \
+    useradd -r -g robocontrol -d /opt/robocontrol -s /sbin/nologin \
+            -c "RoboControl service account" robocontrol
+
+WORKDIR /opt/robocontrol
+
+# Copy binaries from builder
+COPY --from=builder /build/output/ ./
+
+# Create runtime directories
+RUN mkdir -p /opt/robocontrol/{bin,conf,logs,certs} \
+    && chown -R robocontrol:robocontrol /opt/robocontrol
+
+# Expose service ports
+# 9500 - Relay (control)
+# 9501 - Relay (data)
+# 9600 - Signaling (WebSocket)
+# 9601 - Signaling (HTTP API)
+# 9602 - Signaling (gossip)
+# 9700 - Auth service
+# 9800 - Billing service
+EXPOSE 9500 9501 9600 9601 9602 9700 9800
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -sf http://localhost:9700/health || exit 1
+
+USER robocontrol
+
+ENTRYPOINT ["tini", "--"]
+CMD ["./bin/robocontrol"]

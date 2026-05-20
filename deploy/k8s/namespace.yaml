@@ -1,0 +1,13 @@
+# =============================================================================
+# deploy/k8s/namespace.yaml — Namespace definition
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: robocontrol
+  labels:
+    app.kubernetes.io/part-of: robocontrol
+    app.kubernetes.io/managed-by: kubectl
+    environment: production
+  annotations:
+    description: "RoboControl remote robot control platform"
