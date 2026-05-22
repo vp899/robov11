@@ -1,0 +1,108 @@
+# =============================================================================
+# prometheus/prometheus.yml — Prometheus monitoring configuration
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+# ── Alerting Rules ─────────────────────────────────────────────────────────────
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+          # - alertmanager:9093
+
+# ── Rule Files ─────────────────────────────────────────────────────────────────
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+# ── Scrape Configs ─────────────────────────────────────────────────────────────
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # ── RoboControl Services ────────────────────────────────────────────────────
+
+  # Signaling Server
+  - job_name: "signaling"
+    metrics_path: "/metrics"
+    scrape_interval: 10s
+    static_configs:
+      - targets:
+          - "signaling:9100"
+        labels:
+          service: "signaling"
+          component: "signaling"
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+
+  # Relay Server
+  - job_name: "relay"
+    metrics_path: "/metrics"
+    scrape_interval: 10s
+    static_configs:
+      - targets:
+          - "relay:9100"
+        labels:
+          service: "relay"
+          component: "relay"
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+
+  # Auth Service
+  - job_name: "auth"
+    metrics_path: "/metrics"
+    scrape_interval: 10s
+    static_configs:
+      - targets:
+          - "auth:9100"
+        labels:
+          service: "auth"
+          component: "auth"
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+
+  # Billing Service
+  - job_name: "billing"
+    metrics_path: "/metrics"
+    scrape_interval: 10s
+    static_configs:
+      - targets:
+          - "billing:9100"
+        labels:
+          service: "billing"
+          component: "billing"
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
+  # Redis
+  - job_name: "redis"
+    metrics_path: "/metrics"
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - "redis:6379"
+        labels:
+          service: "redis"
+          component: "database"
+
+  # Nginx (stub status)
+  - job_name: "nginx"
+    metrics_path: "/stub_status"
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - "nginx:80"
+        labels:
+          service: "nginx"
+          component: "load-balancer"

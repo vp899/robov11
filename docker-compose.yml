@@ -1,0 +1,335 @@
+# =============================================================================
+# docker-compose.yml — Full stack RoboControl deployment
+# =============================================================================
+
+version: "3.9"
+
+x-common-env: &common-env
+  REDIS_URL: redis://redis:6379/0
+  LOG_LEVEL: info
+  TLS_CERT_PATH: /opt/robocontrol/certs/server.crt
+  TLS_KEY_PATH: /opt/robocontrol/certs/server.key
+  METRICS_ENABLED: "true"
+  METRICS_PORT: "9100"
+
+x-healthcheck-defaults: &hc-defaults
+  interval: 15s
+  timeout: 5s
+  retries: 3
+  start_period: 10s
+
+x-restart-defaults: &restart-defaults
+  restart: unless-stopped
+
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "50m"
+      max-file: "5"
+
+services:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Redis — session store, pub/sub, rate limiting
+  # ─────────────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7.0-alpine
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+      --tcp-backlog 511
+      --timeout 300
+      --tcp-keepalive 60
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      <<: *hc-defaults
+    <<: [*restart-defaults, *logging]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Signaling Server
+  # ─────────────────────────────────────────────────────────────────────────────
+  signaling:
+    build:
+      context: .
+      dockerfile: Dockerfile.signaling
+    environment:
+      <<: *common-env
+      SIGNALING_WS_PORT: "9600"
+      SIGNALING_HTTP_PORT: "9601"
+      SIGNALING_GOSSIP_PORT: "9602"
+      RELAY_HOSTS: relay:9500
+    ports:
+      - "9600-9602:9600-9602"
+    volumes:
+      - ./conf/signaling.conf:/opt/robocontrol/conf/signaling.conf:ro
+      - ./certs:/opt/robocontrol/certs:ro
+    networks:
+      - backend
+      - frontend
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9601/health"]
+      <<: *hc-defaults
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    <<: [*restart-defaults, *logging]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Relay Server
+  # ─────────────────────────────────────────────────────────────────────────────
+  relay:
+    build:
+      context: .
+      dockerfile: Dockerfile.relay
+    environment:
+      <<: *common-env
+      RELAY_CONTROL_PORT: "9500"
+      RELAY_DATA_PORT: "9501"
+      SIGNALING_HOSTS: signaling:9601
+      MAX_CONNECTIONS: "100000"
+    ports:
+      - "9500-9501:9500-9501"
+    volumes:
+      - ./conf/relay.conf:/opt/robocontrol/conf/relay.conf:ro
+      - ./certs:/opt/robocontrol/certs:ro
+    networks:
+      - backend
+      - frontend
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9500/health"]
+      <<: *hc-defaults
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+    <<: [*restart-defaults, *logging]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Auth Service
+  # ─────────────────────────────────────────────────────────────────────────────
+  auth:
+    build:
+      context: .
+      dockerfile: Dockerfile.auth
+    environment:
+      <<: *common-env
+      AUTH_PORT: "9700"
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      TOKEN_EXPIRY_SECONDS: "3600"
+    ports:
+      - "9700:9700"
+    volumes:
+      - ./conf/auth.conf:/opt/robocontrol/conf/auth.conf:ro
+      - ./certs:/opt/robocontrol/certs:ro
+    networks:
+      - backend
+      - frontend
+    depends_on:
+      redis:
+        condition: service_healthy
+    secrets:
+      - jwt_secret
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9700/health"]
+      <<: *hc-defaults
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    <<: [*restart-defaults, *logging]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Billing Service
+  # ─────────────────────────────────────────────────────────────────────────────
+  billing:
+    build:
+      context: .
+      dockerfile: Dockerfile.billing
+    environment:
+      <<: *common-env
+      BILLING_PORT: "9800"
+      STRIPE_SECRET_KEY_FILE: /run/secrets/stripe_key
+      BILLING_DB_URL: redis://redis:6379/1
+    ports:
+      - "9800:9800"
+    volumes:
+      - ./conf/billing.conf:/opt/robocontrol/conf/billing.conf:ro
+      - ./certs:/opt/robocontrol/certs:ro
+    networks:
+      - backend
+      - frontend
+    depends_on:
+      redis:
+        condition: service_healthy
+    secrets:
+      - stripe_key
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9800/health"]
+      <<: *hc-defaults
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    <<: [*restart-defaults, *logging]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Nginx — Load Balancer / Reverse Proxy
+  # ─────────────────────────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+      - nginx-logs:/var/log/nginx
+    networks:
+      - frontend
+    depends_on:
+      - signaling
+      - relay
+      - auth
+      - billing
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      <<: *hc-defaults
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 512M
+        reservations:
+          cpus: "0.5"
+          memory: 128M
+    <<: [*restart-defaults, *logging]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Prometheus — Monitoring
+  # ─────────────────────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+      - "--web.enable-admin-api"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - frontend
+      - monitoring
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/healthy"]
+      <<: *hc-defaults
+    <<: [*restart-defaults, *logging]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Grafana — Dashboards
+  # ─────────────────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.2.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD_FILE: /run/secrets/grafana_password
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/robocontrol.json
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-piechart-panel
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    networks:
+      - monitoring
+    secrets:
+      - grafana_password
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      <<: *hc-defaults
+    <<: [*restart-defaults, *logging]
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  frontend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+  backend:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.20.1.0/24
+  monitoring:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.20.2.0/24
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  redis-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  nginx-logs:
+    driver: local
+
+# =============================================================================
+# Secrets
+# =============================================================================
+secrets:
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt
+  stripe_key:
+    file: ./secrets/stripe_key.txt
+  grafana_password:
+    file: ./secrets/grafana_password.txt

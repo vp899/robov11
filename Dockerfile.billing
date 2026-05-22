@@ -1,0 +1,54 @@
+# =============================================================================
+# Dockerfile.billing — Billing service container
+# =============================================================================
+FROM ubuntu:22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential gcc g++ make cmake pkg-config \
+        libssl-dev libhiredis-dev libjson-c-dev libcurl4-openssl-dev \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY src/ ./src/
+COPY include/ ./include/
+COPY Makefile CMakeLists.txt ./
+
+RUN if [ -f CMakeLists.txt ]; then \
+        mkdir -p cmake-build && cd cmake-build && \
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DTARGET=billing \
+                 -DCMAKE_C_FLAGS="-O2 -Wall -Wextra" && \
+        make -j"$(nproc)" billing_server; \
+    elif [ -f Makefile ]; then \
+        make -j"$(nproc)" billing_server; \
+    fi
+
+# ---------- Runtime ----------
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libssl3 libhiredis0.14 libjson-c5 libcurl4 \
+        ca-certificates curl tini \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r robocontrol && \
+    useradd -r -g robocontrol -d /opt/robocontrol -s /sbin/nologin robocontrol
+
+WORKDIR /opt/robocontrol
+RUN mkdir -p bin conf logs certs && chown -R robocontrol:robocontrol /opt/robocontrol
+
+COPY --from=builder /build/cmake-build/billing_server ./bin/billing_server
+COPY --from=builder /build/output/bin/billing_server ./bin/billing_server 2>/dev/null || true
+
+EXPOSE 9800
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
+    CMD curl -sf http://localhost:9800/health || exit 1
+
+USER robocontrol
+ENTRYPOINT ["tini", "--"]
+CMD ["./bin/billing_server", "--config", "/opt/robocontrol/conf/billing.conf"]

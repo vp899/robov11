@@ -1,0 +1,556 @@
+# =============================================================================
+# deploy/k8s/deployment.yaml — Full Kubernetes deployment
+# =============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ConfigMaps
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: robocontrol-config
+  namespace: robocontrol
+data:
+  RELAY_CONTROL_PORT: "9500"
+  RELAY_DATA_PORT: "9501"
+  SIGNALING_WS_PORT: "9600"
+  SIGNALING_HTTP_PORT: "9601"
+  SIGNALING_GOSSIP_PORT: "9602"
+  AUTH_PORT: "9700"
+  BILLING_PORT: "9800"
+  REDIS_URL: "redis://redis:6379/0"
+  BILLING_DB_URL: "redis://redis:6379/1"
+  LOG_LEVEL: "info"
+  METRICS_ENABLED: "true"
+  METRICS_PORT: "9100"
+  TOKEN_EXPIRY_SECONDS: "3600"
+  MAX_CONNECTIONS: "100000"
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Secrets (base64-encoded — replace with sealed-secrets or external-secrets in production)
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Secret
+metadata:
+  name: robocontrol-secrets
+  namespace: robocontrol
+type: Opaque
+data:
+  jwt_secret: Y2hhbmdlLW1lLWluLXByb2R1Y3Rpb24=    # "change-me-in-production"
+  stripe_key: c2tfdGVzdF9jaGFuZ2VfbWU=              # "sk_test_change_me"
+  grafana_password: YWRtaW4=                          # "admin"
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Signaling Server
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: signaling
+  namespace: robocontrol
+  labels:
+    app: signaling
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: signaling
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: signaling
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: signaling
+          image: ghcr.io/robocontrol/signaling:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 9600
+              name: ws
+            - containerPort: 9601
+              name: http
+            - containerPort: 9602
+              name: gossip
+            - containerPort: 9100
+              name: metrics
+          envFrom:
+            - configMapRef:
+                name: robocontrol-config
+          resources:
+            requests:
+              cpu: 250m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9601
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9601
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: signaling
+  namespace: robocontrol
+  labels:
+    app: signaling
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9600
+      targetPort: 9600
+      name: ws
+    - port: 9601
+      targetPort: 9601
+      name: http
+    - port: 9602
+      targetPort: 9602
+      name: gossip
+  selector:
+    app: signaling
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Relay Server
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: relay
+  namespace: robocontrol
+  labels:
+    app: relay
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: relay
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: relay
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: relay
+          image: ghcr.io/robocontrol/relay:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 9500
+              name: control
+            - containerPort: 9501
+              name: data
+            - containerPort: 9100
+              name: metrics
+          envFrom:
+            - configMapRef:
+                name: robocontrol-config
+          resources:
+            requests:
+              cpu: 500m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9500
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9500
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: relay
+  namespace: robocontrol
+  labels:
+    app: relay
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 9500
+      targetPort: 9500
+      name: control
+    - port: 9501
+      targetPort: 9501
+      name: data
+  selector:
+    app: relay
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Auth Service
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth
+  namespace: robocontrol
+  labels:
+    app: auth
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: auth
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: auth
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: auth
+          image: ghcr.io/robocontrol/auth:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 9700
+              name: http
+            - containerPort: 9100
+              name: metrics
+          envFrom:
+            - configMapRef:
+                name: robocontrol-config
+          env:
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: robocontrol-secrets
+                  key: jwt_secret
+          resources:
+            requests:
+              cpu: 250m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9700
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9700
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth
+  namespace: robocontrol
+  labels:
+    app: auth
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9700
+      targetPort: 9700
+      name: http
+  selector:
+    app: auth
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Billing Service
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing
+  namespace: robocontrol
+  labels:
+    app: billing
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: billing
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: billing
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: billing
+          image: ghcr.io/robocontrol/billing:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 9800
+              name: http
+            - containerPort: 9100
+              name: metrics
+          envFrom:
+            - configMapRef:
+                name: robocontrol-config
+          env:
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: robocontrol-secrets
+                  key: stripe_key
+          resources:
+            requests:
+              cpu: 250m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9800
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9800
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing
+  namespace: robocontrol
+  labels:
+    app: billing
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9800
+      targetPort: 9800
+      name: http
+  selector:
+    app: billing
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# HPA — Horizontal Pod Autoscalers
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: signaling-hpa
+  namespace: robocontrol
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: signaling
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: relay-hpa
+  namespace: robocontrol
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: relay
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: auth-hpa
+  namespace: robocontrol
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: auth
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: billing-hpa
+  namespace: robocontrol
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: billing
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# PDB — Pod Disruption Budgets
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: signaling-pdb
+  namespace: robocontrol
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: signaling
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: relay-pdb
+  namespace: robocontrol
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: relay
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: auth-pdb
+  namespace: robocontrol
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: auth
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: billing-pdb
+  namespace: robocontrol
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: billing

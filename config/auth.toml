@@ -1,0 +1,21 @@
+[server]
+bind = "0.0.0.0"
+port = 9700
+health_port = 9701
+max_connections = 10000
+
+[redis]
+url = "redis://localhost:6379"
+
+[auth]
+secret_key = "CHANGE_ME_IN_PRODUCTION"
+token_ttl_sec = 86400
+refresh_ttl_sec = 604800
+
+[rate_limit]
+window_sec = 60
+max_requests = 100
+
+[logging]
+level = "info"
+facility = "daemon"

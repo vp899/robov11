@@ -1,0 +1,28 @@
+[server]
+bind = "0.0.0.0"
+data_port = 9600
+control_port = 9601
+health_port = 9602
+threads = 0          # auto-detect CPU cores
+max_sessions = 500000
+
+[redis]
+url = "redis://localhost:6379"
+pool_size = 64
+connect_timeout_ms = 3000
+command_timeout_ms = 1000
+
+[limits]
+max_bandwidth_mbps = 1000       # per-relay max bandwidth
+session_timeout_sec = 300       # stale session cleanup
+cleanup_interval_sec = 30       # how often to check for stale sessions
+max_streams_per_session = 8     # max camera streams per robot
+
+[logging]
+level = "info"                  # debug, info, warn, error
+facility = "daemon"
+
+[tls]
+enabled = false
+cert_file = "/etc/robocontrol/tls/relay.crt"
+key_file = "/etc/robocontrol/tls/relay.key"
