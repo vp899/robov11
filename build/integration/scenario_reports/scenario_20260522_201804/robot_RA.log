@@ -1,0 +1,28 @@
+[ROBOT] Connecting to relay 127.0.0.1:19600 for 60 seconds
+[ROBOT] Transport mode: REALTIME
+  Transport mode:      REALTIME
+  Retransmit:          OFF
+  SACK:                OFF
+  Congestion control:  OFF
+  Pacing:              ON
+  ACK generation:      OFF
+[ROBOT] Registered with relay
+[ROBOT] Sending 2 streams × 2 fps × 1000000 bps each
+[ROBOT] 5s: S1=10F/220P S2=10F/220P retx=0 acked=0
+[ROBOT] 10s: S1=20F/440P S2=20F/440P retx=0 acked=0
+[ROBOT] 15s: S1=30F/660P S2=30F/660P retx=0 acked=0
+[ROBOT] 20s: S1=40F/880P S2=40F/880P retx=0 acked=0
+[ROBOT] 25s: S1=50F/1100P S2=50F/1100P retx=0 acked=0
+[ROBOT] 30s: S1=60F/1320P S2=60F/1320P retx=0 acked=0
+[ROBOT] 35s: S1=70F/1540P S2=70F/1540P retx=0 acked=0
+[ROBOT] 40s: S1=80F/1760P S2=80F/1760P retx=0 acked=0
+[ROBOT] 45s: S1=90F/1980P S2=90F/1980P retx=0 acked=0
+[ROBOT] 50s: S1=100F/2200P S2=100F/2200P retx=0 acked=0
+[ROBOT] 55s: S1=110F/2420P S2=110F/2420P retx=0 acked=0
+[ROBOT] 60s: S1=120F/2640P S2=120F/2640P retx=0 acked=0
+
+[ROBOT] === Final Report ===
+[ROBOT] Transport: REALTIME
+[ROBOT] Duration: 60000 ms
+[ROBOT] Stream 1: frames=120 pkts=2640 bytes=3702960 retx=0
+[ROBOT] Stream 2: frames=120 pkts=2640 bytes=3702960 retx=0

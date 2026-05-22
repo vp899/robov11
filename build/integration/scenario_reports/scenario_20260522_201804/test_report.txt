@@ -1,0 +1,267 @@
+╔═══════════════════════════════════════════════════════════════╗
+║       RoboControl Integration Test Report                    ║
+║       Scenario: 4 Robots + 1 Controller                     ║
+╚═══════════════════════════════════════════════════════════════╝
+
+Test Date:     2026-05-22 20:19:17
+Duration:      60 seconds
+Transport:     realtime (fire-and-forget)
+Packet Loss:   0% (clean network)
+
+┌─────────────────────────────────────────────────────────────┐
+│  Architecture                                               │
+├─────────────────────────────────────────────────────────────┤
+│  Signaling Server  : TCP :19500                          │
+│  Robot RA (relay)  : UDP :19600                          │
+│  Robot RB (relay)  : UDP :19601                          │
+│  Robot RC (relay)  : UDP :19602                          │
+│  Robot RD (relay)  : UDP :19603                          │
+│  Controller H1     : Connected to RA relay              │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│  Robot Registration Status                                  │
+├─────────────────────────────────────────────────────────────┤
+│  ✅ RA  — Registered and streaming                     │
+│  ✅ RB  — Registered and streaming                     │
+│  ✅ RC  — Registered and streaming                     │
+│  ✅ RD  — Registered and streaming                     │
+└─────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════
+  Robot Sender Statistics
+═══════════════════════════════════════════════════════════════
+
+  ── Robot RA ──
+    [ROBOT] === Final Report ===
+    [ROBOT] Transport: REALTIME
+    [ROBOT] Duration: 60000 ms
+    [ROBOT] Stream 1: frames=120 pkts=2640 bytes=3702960 retx=0
+    [ROBOT] Stream 2: frames=120 pkts=2640 bytes=3702960 retx=0
+    Last: [ROBOT] 60s: S1=120F/2640P S2=120F/2640P retx=0 acked=0
+
+  ── Robot RB ──
+    [ROBOT] === Final Report ===
+    [ROBOT] Transport: REALTIME
+    [ROBOT] Duration: 60000 ms
+    [ROBOT] Stream 1: frames=120 pkts=2640 bytes=3702960 retx=0
+    [ROBOT] Stream 2: frames=120 pkts=2640 bytes=3702960 retx=0
+    Last: [ROBOT] 60s: S1=120F/2640P S2=120F/2640P retx=0 acked=0
+
+  ── Robot RC ──
+    [ROBOT] === Final Report ===
+    [ROBOT] Transport: REALTIME
+    [ROBOT] Duration: 60000 ms
+    [ROBOT] Stream 1: frames=120 pkts=2640 bytes=3702960 retx=0
+    [ROBOT] Stream 2: frames=120 pkts=2640 bytes=3702960 retx=0
+    Last: [ROBOT] 60s: S1=120F/2640P S2=120F/2640P retx=0 acked=0
+
+  ── Robot RD ──
+    [ROBOT] === Final Report ===
+    [ROBOT] Transport: REALTIME
+    [ROBOT] Duration: 60000 ms
+    [ROBOT] Stream 1: frames=120 pkts=2640 bytes=3702960 retx=0
+    [ROBOT] Stream 2: frames=120 pkts=2640 bytes=3702960 retx=0
+    Last: [ROBOT] 60s: S1=120F/2640P S2=120F/2640P retx=0 acked=0
+
+═══════════════════════════════════════════════════════════════
+  Controller H1 Statistics (Receiving from RA)
+═══════════════════════════════════════════════════════════════
+
+  Registration:
+    [REMOTE] Registered with relay, session_id=1
+
+  Progress:
+    [REMOTE] 5s: pkts=441 S1=220/1 S2=221/1 errs=0
+    [REMOTE] 10s: pkts=881 S1=440/1 S2=441/1 errs=0
+    [REMOTE] 15s: pkts=1321 S1=660/1 S2=661/1 errs=0
+    [REMOTE] 20s: pkts=1761 S1=880/1 S2=881/1 errs=0
+    [REMOTE] 25s: pkts=2201 S1=1100/1 S2=1101/1 errs=0
+    [REMOTE] 30s: pkts=2641 S1=1320/1 S2=1321/1 errs=0
+    [REMOTE] 35s: pkts=3081 S1=1540/1 S2=1541/1 errs=0
+    [REMOTE] 40s: pkts=3521 S1=1760/1 S2=1761/1 errs=0
+    [REMOTE] 45s: pkts=3961 S1=1980/1 S2=1981/1 errs=0
+    [REMOTE] 50s: pkts=4401 S1=2200/1 S2=2201/1 errs=0
+    [REMOTE] 55s: pkts=4841 S1=2420/1 S2=2421/1 errs=0
+
+  Final:
+    [REMOTE] === Final Report ===
+    [REMOTE] Transport: REALTIME
+
+═══════════════════════════════════════════════════════════════
+  H1 Detailed Report (from file)
+═══════════════════════════════════════════════════════════════
+
+  ═══════════════════════════════════════════════════════════════
+    RoboControl Integration Test Report
+  ═══════════════════════════════════════════════════════════════
+  
+  Transport mode:  REALTIME
+    Transport mode:      REALTIME
+    Retransmit:          OFF
+    SACK:                OFF
+    Congestion control:  OFF
+    Pacing:              ON
+    ACK generation:      OFF
+  
+  Total packets: 4906
+  Total bytes:   6881334
+  Proto errors:  0
+  
+  ─── Stream 1 ───
+    Packets:       2442
+    Frames:        1
+    Bytes:         3425238
+    Corrupted:     1
+    Bad structure: 0
+    Missing frames:0
+    Correctness:   99.96%
+  
+  
+  ╔══════════════════════════════════════════════════════════════╗
+  ║  Stream 1                                                    ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  Packet loss rate:       0%                                 ║
+  ║  Packets received:     2442                                ║
+  ║  Packets lost (gaps):  0                                   ║
+  ║  Duration:             55.00      s                       ║
+  ║  Throughput:           44.40      pkt/s                   ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  Latency (µs):                                              ║
+  ║    Mean:             35.2                                  ║
+  ║    Stddev:            6.1                                  ║
+  ║    Min:              23.0                                  ║
+  ║    Max:              62.0                                  ║
+  ║    P50:              34.0                                  ║
+  ║    P95:              47.0                                  ║
+  ║    P99:              54.0                                  ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  Latency (ms):                                              ║
+  ║    Mean:            0.035                                  ║
+  ║    Stddev:          0.006                                  ║
+  ║    Min:             0.023                                  ║
+  ║    Max:             0.062                                  ║
+  ║    P50:             0.034                                  ║
+  ║    P95:             0.047                                  ║
+  ║    P99:             0.054                                  ║
+  ╚══════════════════════════════════════════════════════════════╝
+  ─── Stream 2 ───
+    Packets:       2464
+    Frames:        1
+    Bytes:         3456096
+    Corrupted:     1
+    Bad structure: 0
+    Missing frames:0
+    Correctness:   99.96%
+  
+  
+  ╔══════════════════════════════════════════════════════════════╗
+  ║  Stream 2                                                    ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  Packet loss rate:       0%                                 ║
+  ║  Packets received:     2464                                ║
+  ║  Packets lost (gaps):  0                                   ║
+  ║  Duration:             55.50      s                       ║
+  ║  Throughput:           44.40      pkt/s                   ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  Latency (µs):                                              ║
+  ║    Mean:             66.7                                  ║
+  ║    Stddev:          129.4                                  ║
+  ║    Min:              23.0                                  ║
+  ║    Max:             763.0                                  ║
+  ║    P50:              35.0                                  ║
+  ║    P95:             524.0                                  ║
+  ║    P99:             707.0                                  ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  Latency (ms):                                              ║
+  ║    Mean:            0.067                                  ║
+  ║    Stddev:          0.129                                  ║
+  ║    Min:             0.023                                  ║
+  ║    Max:             0.763                                  ║
+  ║    P50:             0.035                                  ║
+  ║    P95:             0.524                                  ║
+  ║    P99:             0.707                                  ║
+  ╚══════════════════════════════════════════════════════════════╝
+  
+  ╔══════════════════════════════════════════════════════════════╗
+  ║  Overall (All Streams)                                       ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  Packet loss rate:       0%                                 ║
+  ║  Packets received:     4906                                ║
+  ║  Packets lost (gaps):  0                                   ║
+  ║  Duration:             55.50      s                       ║
+  ║  Throughput:           88.40      pkt/s                   ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  Latency (µs):                                              ║
+  ║    Mean:             51.0                                  ║
+  ║    Stddev:           93.1                                  ║
+  ║    Min:              23.0                                  ║
+  ║    Max:             763.0                                  ║
+  ║    P50:              35.0                                  ║
+  ║    P95:              55.0                                  ║
+  ║    P99:             603.0                                  ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  Latency (ms):                                              ║
+  ║    Mean:            0.051                                  ║
+  ║    Stddev:          0.093                                  ║
+  ║    Min:             0.023                                  ║
+  ║    Max:             0.763                                  ║
+  ║    P50:             0.035                                  ║
+  ║    P95:             0.055                                  ║
+  ║    P99:             0.603                                  ║
+  ╚══════════════════════════════════════════════════════════════╝
+  
+  ─── Throughput ───
+    Stream 1: 0.44 Mbps (39.4 pkt/s)
+    Stream 2: 0.45 Mbps (39.7 pkt/s)
+    Total:    0.89 Mbps
+  
+  ═══════════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════════
+  Relay Statistics
+═══════════════════════════════════════════════════════════════
+
+  ── Relay RA (port 19600) ──
+    [RELAY] 1915s: fwd=4401 dropped=0 bytes=6173032
+    [RELAY] 1920s: fwd=4841 dropped=0 bytes=6790192
+    [RELAY] Shutdown: forwarded=4907 dropped=0 bytes=6881366
+    [RELAY] Shutdown: forwarded=4907 dropped=0 bytes=6881366
+
+  ── Relay RB (port 19601) ──
+    [RELAY] Listening on UDP :19601 (loss=0%)
+    [RELAY] Registered 'robot' from 127.0.0.1:52882
+    [RELAY] Shutdown: forwarded=0 dropped=0 bytes=0
+    [RELAY] Shutdown: forwarded=0 dropped=0 bytes=0
+
+  ── Relay RC (port 19602) ──
+    [RELAY] Listening on UDP :19602 (loss=0%)
+    [RELAY] Registered 'robot' from 127.0.0.1:47410
+    [RELAY] Shutdown: forwarded=0 dropped=0 bytes=0
+    [RELAY] Shutdown: forwarded=0 dropped=0 bytes=0
+
+  ── Relay RD (port 19603) ──
+    [RELAY] Listening on UDP :19603 (loss=0%)
+    [RELAY] Registered 'robot' from 127.0.0.1:49644
+    [RELAY] Shutdown: forwarded=0 dropped=0 bytes=0
+    [RELAY] Shutdown: forwarded=0 dropped=0 bytes=0
+
+═══════════════════════════════════════════════════════════════
+  Signaling Server Log (last 20 lines)
+═══════════════════════════════════════════════════════════════
+
+  [SIG] Listening on TCP :19500
+  [SIG] Shutting down (peak clients=0)
+
+═══════════════════════════════════════════════════════════════
+  VERDICT
+═══════════════════════════════════════════════════════════════
+
+  ✅ PASS: H1 received 4906 packets from RA
+
+  Results: 7 passed, 0 failed
+  🎉 ALL TESTS PASSED
+
+═══════════════════════════════════════════════════════════════
+  Report saved: /root/.openclaw/workspace/robov11/test/integration/../../build/integration/scenario_reports/scenario_20260522_201804/test_report.txt
+═══════════════════════════════════════════════════════════════

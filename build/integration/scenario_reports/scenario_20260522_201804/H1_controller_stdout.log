@@ -1,0 +1,26 @@
+[REMOTE] Connecting to relay 127.0.0.1:19600 for 60 seconds
+[REMOTE] Transport mode: REALTIME
+  Transport mode:      REALTIME
+  Retransmit:          OFF
+  SACK:                OFF
+  Congestion control:  OFF
+  Pacing:              ON
+  ACK generation:      OFF
+[REMOTE] Registered with relay, session_id=1
+[REMOTE] Waiting for data...
+[REMOTE] 5s: pkts=441 S1=220/1 S2=221/1 errs=0
+[REMOTE] 10s: pkts=881 S1=440/1 S2=441/1 errs=0
+[REMOTE] 15s: pkts=1321 S1=660/1 S2=661/1 errs=0
+[REMOTE] 20s: pkts=1761 S1=880/1 S2=881/1 errs=0
+[REMOTE] 25s: pkts=2201 S1=1100/1 S2=1101/1 errs=0
+[REMOTE] 30s: pkts=2641 S1=1320/1 S2=1321/1 errs=0
+[REMOTE] 35s: pkts=3081 S1=1540/1 S2=1541/1 errs=0
+[REMOTE] 40s: pkts=3521 S1=1760/1 S2=1761/1 errs=0
+[REMOTE] 45s: pkts=3961 S1=1980/1 S2=1981/1 errs=0
+[REMOTE] 50s: pkts=4401 S1=2200/1 S2=2201/1 errs=0
+[REMOTE] 55s: pkts=4841 S1=2420/1 S2=2421/1 errs=0
+
+[REMOTE] === Final Report ===
+[REMOTE] Transport: REALTIME
+[REMOTE] Total packets: 4906  bytes: 6881334  errors: 0
+[REMOTE] Report: /root/.openclaw/workspace/robov11/test/integration/../../build/integration/scenario_reports/scenario_20260522_201804/H1_controller_report.txt
