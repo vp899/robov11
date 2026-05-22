@@ -1,0 +1,36 @@
+[ROBOT] Relay mode: connecting to 127.0.0.1:19603 for 60 seconds
+[ROBOT] Transport mode: RELIABLE
+  Transport mode:      RELIABLE
+  Retransmit:          ON
+    Timeout:           200 ms
+    Max retries:       20
+    Dup ACK thresh:    3
+  SACK:                ON
+  Congestion control:  ON
+  Pacing:              ON
+  ACK generation:      ON
+    ACK interval:      50 ms
+[ROBOT] Registered with relay
+[ROBOT] Sending 2 streams × 2 fps × 1000000 bps each
+[ROBOT] 5s: S1=10F/49P S2=10F/49P retx=317 acked=0
+[ROBOT] 10s: S1=20F/79P S2=20F/79P retx=634 acked=0
+[ROBOT] 15s: S1=30F/109P S2=30F/109P retx=993 acked=0
+[ROBOT] 20s: S1=40F/158P S2=40F/158P retx=1573 acked=0
+[ROBOT] 25s: S1=50F/188P S2=50F/188P retx=2114 acked=0
+[ROBOT] 30s: S1=60F/218P S2=60F/218P retx=2777 acked=0
+[ROBOT] 35s: S1=70F/267P S2=70F/267P retx=3596 acked=0
+[ROBOT] 40s: S1=80F/297P S2=80F/297P retx=4406 acked=0
+[ROBOT] 45s: S1=90F/327P S2=90F/327P retx=5277 acked=0
+[ROBOT] 50s: S1=100F/376P S2=100F/376P retx=6402 acked=0
+[ROBOT] 55s: S1=110F/406P S2=110F/406P retx=7483 acked=0
+[ROBOT] 60s: S1=120F/436P S2=120F/436P retx=8708 acked=0
+
+[ROBOT] === Final Report ===
+[ROBOT] Transport: RELIABLE
+[ROBOT] Duration: 60000 ms
+[ROBOT] Stream 1: frames=120 pkts=436 bytes=485004 retx=4292
+[ROBOT] Stream 2: frames=120 pkts=436 bytes=485004 retx=4292
+[ROBOT] Retransmission stats:
+[ROBOT]   Fast retx:     0
+[ROBOT]   Timeout retx:  8708
+[ROBOT]   Total acked:   0

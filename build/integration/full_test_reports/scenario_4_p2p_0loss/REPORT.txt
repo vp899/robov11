@@ -1,0 +1,222 @@
+╔═══════════════════════════════════════════════════════════════╗
+║  Integration Test Report: P2P 0% Loss
+╚═══════════════════════════════════════════════════════════════╝
+
+Date:     2026-05-22 22:06:21
+Duration: 60s
+
+┌─ Robot Registration ─────────────────────────────────────────┐
+│  ✅ RA registered
+│  ✅ RB registered
+│  ✅ RC registered
+│  ✅ RD registered
+└──────────────────────────────────────────────────────────────┘
+
+═══ Controller H1 ═══
+  H1:
+    Mode:     RELIABLE
+    Packets:  1618
+    Errors:   0
+    Throughput: 0.23 Mbps
+
+  ═══════════════════════════════════════════════════════════════
+    RoboControl Integration Test Report
+  ═══════════════════════════════════════════════════════════════
+  
+  Transport mode:  RELIABLE
+    Transport mode:      RELIABLE
+    Retransmit:          ON
+      Timeout:           200 ms
+      Max retries:       20
+      Dup ACK thresh:    3
+    SACK:                ON
+    Congestion control:  ON
+    Pacing:              ON
+    ACK generation:      ON
+      ACK interval:      50 ms
+  
+  Total packets: 1618
+  Total bytes:   1776316
+  Proto errors:  0
+  
+  ─── Stream 1 ───
+    Packets:       811
+    Frames:        118
+    Bytes:         889843
+    Corrupted:     3
+    Bad structure: 0
+    Missing frames:1
+    Correctness:   99.63%
+  
+  
+  ╔══════════════════════════════════════════════════════════════╗
+  ║  Stream 1                                                    ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  Packet loss rate:       0%                                 ║
+  ║  Packets received:     811                                 ║
+  ║  Packets lost (gaps):  0                                   ║
+  ║  Duration:             59.25      s                       ║
+  ║  Throughput:           13.69      pkt/s                   ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  Latency (µs):                                              ║
+  ║    Mean:         133428.5                                  ║
+  ║    Stddev:       163299.4                                  ║
+  ║    Min:               7.0                                  ║
+  ║    Max:         1749902.0                                  ║
+  ║    P50:          249861.0                                  ║
+  ║    P95:          249914.0                                  ║
+  ║    P99:          249963.0                                  ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  Latency (ms):                                              ║
+  ║    Mean:          133.428                                  ║
+  ║    Stddev:        163.299                                  ║
+  ║    Min:             0.007                                  ║
+  ║    Max:          1749.902                                  ║
+  ║    P50:           249.861                                  ║
+  ║    P95:           249.914                                  ║
+  ║    P99:           249.963                                  ║
+  ╚══════════════════════════════════════════════════════════════╝
+  ─── Stream 2 ───
+    Packets:       807
+    Frames:        119
+    Bytes:         886473
+    Corrupted:     3
+    Bad structure: 0
+    Missing frames:1
+    Correctness:   99.63%
+  
+  
+  ╔══════════════════════════════════════════════════════════════╗
+  ║  Stream 2                                                    ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  Packet loss rate:       0%                                 ║
+  ║  Packets received:     807                                 ║
+  ║  Packets lost (gaps):  0                                   ║
+  ║  Duration:             59.00      s                       ║
+  ║  Throughput:           13.68      pkt/s                   ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  Latency (µs):                                              ║
+  ║    Mean:         131927.4                                  ║
+  ║    Stddev:       163543.1                                  ║
+  ║    Min:               6.0                                  ║
+  ║    Max:         1749903.0                                  ║
+  ║    P50:              48.0                                  ║
+  ║    P95:          249922.0                                  ║
+  ║    P99:          249956.0                                  ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  Latency (ms):                                              ║
+  ║    Mean:          131.927                                  ║
+  ║    Stddev:        163.543                                  ║
+  ║    Min:             0.006                                  ║
+  ║    Max:          1749.903                                  ║
+  ║    P50:             0.048                                  ║
+  ║    P95:           249.922                                  ║
+  ║    P99:           249.956                                  ║
+  ╚══════════════════════════════════════════════════════════════╝
+  
+  ╔══════════════════════════════════════════════════════════════╗
+  ║  Overall (All Streams)                                       ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  Packet loss rate:       0%                                 ║
+  ║  Packets received:     1618                                ║
+  ║  Packets lost (gaps):  0                                   ║
+  ║  Duration:             59.25      s                       ║
+  ║  Throughput:           27.31      pkt/s                   ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  Latency (µs):                                              ║
+  ║    Mean:         132679.8                                  ║
+  ║    Stddev:       163372.2                                  ║
+  ║    Min:               6.0                                  ║
+  ║    Max:         1749903.0                                  ║
+  ║    P50:          249860.0                                  ║
+  ║    P95:          249919.0                                  ║
+  ║    P99:          249961.0                                  ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  Latency (ms):                                              ║
+  ║    Mean:          132.680                                  ║
+  ║    Stddev:        163.372                                  ║
+  ║    Min:             0.006                                  ║
+  ║    Max:          1749.903                                  ║
+  ║    P50:           249.860                                  ║
+  ║    P95:           249.919                                  ║
+  ║    P99:           249.961                                  ║
+  ╚══════════════════════════════════════════════════════════════╝
+  
+  ─── Throughput ───
+    Stream 1: 0.12 Mbps (13.3 pkt/s)
+    Stream 2: 0.12 Mbps (13.3 pkt/s)
+    Total:    0.23 Mbps
+  
+  ─── ACK Statistics (Reliable Mode) ───
+    Stream 1: ACKs sent=230 highest_seq=435
+    Stream 2: ACKs sent=230 highest_seq=435
+  
+  ═══════════════════════════════════════════════════════════════
+
+═══ Robot Sender Stats ═══
+  ── RA ──
+    [ROBOT] === Final Report ===
+    [ROBOT] Transport: RELIABLE
+    [ROBOT] Duration: 60000 ms
+    [ROBOT] Stream 1: frames=120 pkts=436 bytes=485004 retx=375
+    [ROBOT] Stream 2: frames=120 pkts=436 bytes=485004 retx=375
+    [ROBOT] Retransmission stats:
+    [ROBOT]   Fast retx:     0
+    [ROBOT]   Timeout retx:  973
+    [ROBOT]   Total acked:   869
+  ── RB ──
+    [ROBOT] === Final Report ===
+    [ROBOT] Transport: RELIABLE
+    [ROBOT] Duration: 60000 ms
+    [ROBOT] Stream 1: frames=120 pkts=436 bytes=485004 retx=4282
+    [ROBOT] Stream 2: frames=120 pkts=436 bytes=485004 retx=4282
+    [ROBOT] Retransmission stats:
+    [ROBOT]   Fast retx:     0
+    [ROBOT]   Timeout retx:  8693
+    [ROBOT]   Total acked:   0
+  ── RC ──
+    [ROBOT] === Final Report ===
+    [ROBOT] Transport: RELIABLE
+    [ROBOT] Duration: 60000 ms
+    [ROBOT] Stream 1: frames=120 pkts=436 bytes=485004 retx=4265
+    [ROBOT] Stream 2: frames=120 pkts=436 bytes=485004 retx=4265
+    [ROBOT] Retransmission stats:
+    [ROBOT]   Fast retx:     0
+    [ROBOT]   Timeout retx:  8653
+    [ROBOT]   Total acked:   0
+  ── RD ──
+    [ROBOT] === Final Report ===
+    [ROBOT] Transport: RELIABLE
+    [ROBOT] Duration: 60000 ms
+    [ROBOT] Stream 1: frames=120 pkts=436 bytes=485004 retx=4292
+    [ROBOT] Stream 2: frames=120 pkts=436 bytes=485004 retx=4292
+    [ROBOT] Retransmission stats:
+    [ROBOT]   Fast retx:     0
+    [ROBOT]   Timeout retx:  8708
+    [ROBOT]   Total acked:   0
+
+═══ Relay Stats ═══
+  ── Relay RA ──
+    [RELAY] 4869s: fwd=1891 loss_drop=0 bw_drop=0 bytes=1645865
+    [RELAY] 4874s: fwd=2047 loss_drop=0 bw_drop=0 bytes=1767276
+    [RELAY] Shutdown: forwarded=2081 loss_drop=0 bw_drop=0 bytes=1791132
+  ── Relay RB ──
+    [RELAY] Listening on UDP :19601 (loss=0%)
+    [RELAY] Registered 'robot' from 127.0.0.1:56775
+    [RELAY] Shutdown: forwarded=0 loss_drop=0 bw_drop=0 bytes=0
+  ── Relay RC ──
+    [RELAY] Listening on UDP :19602 (loss=0%)
+    [RELAY] Registered 'robot' from 127.0.0.1:49332
+    [RELAY] Shutdown: forwarded=0 loss_drop=0 bw_drop=0 bytes=0
+  ── Relay RD ──
+    [RELAY] Listening on UDP :19603 (loss=0%)
+    [RELAY] Registered 'robot' from 127.0.0.1:39605
+    [RELAY] Shutdown: forwarded=0 loss_drop=0 bw_drop=0 bytes=0
+
+═══ VERDICT ═══
+  ✅ H1 received 1618 packets
+
+Results: 5 passed, 0 failed
+🎉 ALL CHECKS PASSED
+
+═══════════════════════════════════════════════════════════════

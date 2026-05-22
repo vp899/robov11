@@ -1,0 +1,30 @@
+[REMOTE] Relay mode: connecting to 127.0.0.1:19600 for 60 seconds
+[REMOTE] Transport mode: RELIABLE
+  Transport mode:      RELIABLE
+  Retransmit:          ON
+    Timeout:           200 ms
+    Max retries:       20
+    Dup ACK thresh:    3
+  SACK:                ON
+  Congestion control:  ON
+  Pacing:              ON
+  ACK generation:      ON
+    ACK interval:      50 ms
+[REMOTE] Registered with relay, session_id=1
+[REMOTE] Waiting for data...
+[REMOTE] 5s: pkts=123 S1=63/13 S2=60/13 errs=0
+[REMOTE] 10s: pkts=235 S1=119/23 S2=116/23 errs=0
+[REMOTE] 15s: pkts=424 S1=212/33 S2=212/33 errs=0
+[REMOTE] 20s: pkts=532 S1=265/43 S2=267/43 errs=0
+[REMOTE] 25s: pkts=648 S1=323/55 S2=325/53 errs=0
+[REMOTE] 30s: pkts=833 S1=416/65 S2=417/63 errs=0
+[REMOTE] 35s: pkts=951 S1=474/75 S2=477/73 errs=0
+[REMOTE] 40s: pkts=1066 S1=530/85 S2=536/83 errs=0
+[REMOTE] 45s: pkts=1249 S1=623/95 S2=626/93 errs=0
+[REMOTE] 50s: pkts=1362 S1=678/105 S2=684/103 errs=0
+[REMOTE] 55s: pkts=1478 S1=735/115 S2=743/113 errs=0
+
+[REMOTE] === Final Report ===
+[REMOTE] Transport: RELIABLE
+[REMOTE] Total packets: 1538  bytes: 1691231  errors: 0
+[REMOTE] Report: /root/.openclaw/workspace/robov11/test/integration/../../build/integration/full_test_reports/scenario_2_relay_5loss/H1_report.txt

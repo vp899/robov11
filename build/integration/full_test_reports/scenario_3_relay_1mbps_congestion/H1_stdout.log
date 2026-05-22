@@ -1,0 +1,78 @@
+[REMOTE] Relay mode: connecting to 127.0.0.1:19600 for 300 seconds
+[REMOTE] Transport mode: RELIABLE
+  Transport mode:      RELIABLE
+  Retransmit:          ON
+    Timeout:           200 ms
+    Max retries:       20
+    Dup ACK thresh:    3
+  SACK:                ON
+  Congestion control:  ON
+  Pacing:              ON
+  ACK generation:      ON
+    ACK interval:      50 ms
+[REMOTE] Registered with relay, session_id=1
+[REMOTE] Waiting for data...
+[REMOTE] 5s: pkts=133 S1=67/13 S2=66/13 errs=0
+[REMOTE] 10s: pkts=253 S1=127/23 S2=126/23 errs=0
+[REMOTE] 15s: pkts=449 S1=225/33 S2=224/33 errs=0
+[REMOTE] 20s: pkts=569 S1=285/43 S2=284/43 errs=0
+[REMOTE] 25s: pkts=689 S1=345/53 S2=344/53 errs=0
+[REMOTE] 30s: pkts=885 S1=443/63 S2=442/63 errs=0
+[REMOTE] 35s: pkts=1005 S1=503/73 S2=502/73 errs=0
+[REMOTE] 40s: pkts=1125 S1=563/83 S2=562/83 errs=0
+[REMOTE] 45s: pkts=1321 S1=661/93 S2=660/93 errs=0
+[REMOTE] 50s: pkts=1441 S1=721/103 S2=720/103 errs=0
+[REMOTE] 55s: pkts=1561 S1=781/113 S2=780/113 errs=0
+[REMOTE] 60s: pkts=1753 S1=878/123 S2=875/123 errs=0
+[REMOTE] 65s: pkts=1873 S1=938/133 S2=935/133 errs=0
+[REMOTE] 70s: pkts=1993 S1=998/143 S2=995/143 errs=0
+[REMOTE] 75s: pkts=2189 S1=1096/153 S2=1093/153 errs=0
+[REMOTE] 80s: pkts=2309 S1=1156/163 S2=1153/163 errs=0
+[REMOTE] 85s: pkts=2429 S1=1216/173 S2=1213/173 errs=0
+[REMOTE] 90s: pkts=2625 S1=1314/183 S2=1311/183 errs=0
+[REMOTE] 95s: pkts=2745 S1=1374/193 S2=1371/193 errs=0
+[REMOTE] 100s: pkts=2865 S1=1434/203 S2=1431/203 errs=0
+[REMOTE] 105s: pkts=3061 S1=1532/213 S2=1529/213 errs=0
+[REMOTE] 110s: pkts=3181 S1=1592/223 S2=1589/223 errs=0
+[REMOTE] 115s: pkts=3301 S1=1652/233 S2=1649/233 errs=0
+[REMOTE] 120s: pkts=3497 S1=1750/243 S2=1747/243 errs=0
+[REMOTE] 125s: pkts=3617 S1=1810/253 S2=1807/253 errs=0
+[REMOTE] 130s: pkts=3737 S1=1870/263 S2=1867/263 errs=0
+[REMOTE] 135s: pkts=3933 S1=1968/273 S2=1965/273 errs=0
+[REMOTE] 140s: pkts=4053 S1=2028/283 S2=2025/283 errs=0
+[REMOTE] 145s: pkts=4173 S1=2088/293 S2=2085/293 errs=0
+[REMOTE] 150s: pkts=4369 S1=2186/303 S2=2183/303 errs=0
+[REMOTE] 155s: pkts=4489 S1=2246/313 S2=2243/313 errs=0
+[REMOTE] 160s: pkts=4609 S1=2306/323 S2=2303/323 errs=0
+[REMOTE] 165s: pkts=4805 S1=2404/333 S2=2401/333 errs=0
+[REMOTE] 170s: pkts=4925 S1=2464/343 S2=2461/343 errs=0
+[REMOTE] 175s: pkts=5045 S1=2524/353 S2=2521/353 errs=0
+[REMOTE] 180s: pkts=5241 S1=2622/363 S2=2619/363 errs=0
+[REMOTE] 185s: pkts=5361 S1=2682/373 S2=2679/373 errs=0
+[REMOTE] 190s: pkts=5481 S1=2742/383 S2=2739/383 errs=0
+[REMOTE] 195s: pkts=5677 S1=2840/393 S2=2837/393 errs=0
+[REMOTE] 200s: pkts=5797 S1=2900/403 S2=2897/403 errs=0
+[REMOTE] 205s: pkts=5917 S1=2960/413 S2=2957/413 errs=0
+[REMOTE] 210s: pkts=6113 S1=3058/423 S2=3055/423 errs=0
+[REMOTE] 215s: pkts=6233 S1=3118/433 S2=3115/433 errs=0
+[REMOTE] 220s: pkts=6353 S1=3178/443 S2=3175/443 errs=0
+[REMOTE] 225s: pkts=6549 S1=3276/453 S2=3273/453 errs=0
+[REMOTE] 230s: pkts=6669 S1=3336/463 S2=3333/463 errs=0
+[REMOTE] 235s: pkts=6789 S1=3396/473 S2=3393/473 errs=0
+[REMOTE] 240s: pkts=6985 S1=3494/483 S2=3491/483 errs=0
+[REMOTE] 245s: pkts=7105 S1=3554/493 S2=3551/493 errs=0
+[REMOTE] 250s: pkts=7225 S1=3614/503 S2=3611/503 errs=0
+[REMOTE] 255s: pkts=7421 S1=3712/513 S2=3709/513 errs=0
+[REMOTE] 260s: pkts=7541 S1=3772/523 S2=3769/523 errs=0
+[REMOTE] 265s: pkts=7661 S1=3832/533 S2=3829/533 errs=0
+[REMOTE] 270s: pkts=7853 S1=3929/543 S2=3924/543 errs=0
+[REMOTE] 275s: pkts=7973 S1=3989/553 S2=3984/553 errs=0
+[REMOTE] 280s: pkts=8089 S1=4048/563 S2=4041/563 errs=0
+[REMOTE] 285s: pkts=8285 S1=4146/573 S2=4139/573 errs=0
+[REMOTE] 290s: pkts=8405 S1=4206/583 S2=4199/583 errs=0
+[REMOTE] 295s: pkts=8521 S1=4265/593 S2=4256/593 errs=0
+
+[REMOTE] === Final Report ===
+[REMOTE] Transport: RELIABLE
+[REMOTE] Total packets: 8586  bytes: 9527282  errors: 0
+[REMOTE] Report: /root/.openclaw/workspace/robov11/test/integration/../../build/integration/full_test_reports/scenario_3_relay_1mbps_congestion/H1_report.txt

@@ -148,28 +148,46 @@ static void send_ack(int fd, const struct sockaddr *dst, socklen_t dst_len,
 
 int main(int argc, char *argv[])
 {
-    if (argc < 5) {
-        fprintf(stderr, "Usage: %s <relay_ip> <relay_port> <duration_sec> <output_prefix> [reliable|realtime]\n", argv[0]);
-        return 1;
-    }
-    const char *relay_ip = argv[1];
-    uint16_t relay_port = (uint16_t)atoi(argv[2]);
-    int duration_sec = atoi(argv[3]);
-    const char *output_prefix = argv[4];
-    if (duration_sec <= 0) duration_sec = 180;
-
-    /* Parse transport mode */
+    bool p2p_mode = false;
+    const char *relay_ip = NULL;
+    uint16_t relay_port = 0;
+    int duration_sec = 0;
+    const char *output_prefix = NULL;
     transport_mode_t mode = TRANSPORT_REALTIME;
-    if (argc > 5) {
-        if (strcmp(argv[5], "reliable") == 0)
-            mode = TRANSPORT_RELIABLE;
-        else if (strcmp(argv[5], "realtime") == 0)
-            mode = TRANSPORT_REALTIME;
-        else {
-            fprintf(stderr, "Unknown mode: %s (use 'reliable' or 'realtime')\n", argv[5]);
+
+    if (argc >= 2 && strcmp(argv[1], "p2p") == 0) {
+        /* P2P mode: remote_receiver p2p <listen_port> <duration> <output_prefix> [reliable|realtime] */
+        p2p_mode = true;
+        if (argc < 5) {
+            fprintf(stderr, "Usage: %s p2p <listen_port> <duration_sec> <output_prefix> [reliable|realtime]\n", argv[0]);
             return 1;
         }
+        relay_port = (uint16_t)atoi(argv[2]);
+        duration_sec = atoi(argv[3]);
+        output_prefix = argv[4];
+        if (argc > 5) {
+            if (strcmp(argv[5], "reliable") == 0) mode = TRANSPORT_RELIABLE;
+            else if (strcmp(argv[5], "realtime") == 0) mode = TRANSPORT_REALTIME;
+            else { fprintf(stderr, "Unknown mode: %s\n", argv[5]); return 1; }
+        }
+    } else {
+        /* Relay mode: remote_receiver <relay_ip> <relay_port> <duration> <output_prefix> [reliable|realtime] */
+        if (argc < 5) {
+            fprintf(stderr, "Usage: %s <relay_ip> <relay_port> <duration_sec> <output_prefix> [reliable|realtime]\n", argv[0]);
+            fprintf(stderr, "   or: %s p2p <listen_port> <duration_sec> <output_prefix> [reliable|realtime]\n", argv[0]);
+            return 1;
+        }
+        relay_ip = argv[1];
+        relay_port = (uint16_t)atoi(argv[2]);
+        duration_sec = atoi(argv[3]);
+        output_prefix = argv[4];
+        if (argc > 5) {
+            if (strcmp(argv[5], "reliable") == 0) mode = TRANSPORT_RELIABLE;
+            else if (strcmp(argv[5], "realtime") == 0) mode = TRANSPORT_REALTIME;
+            else { fprintf(stderr, "Unknown mode: %s\n", argv[5]); return 1; }
+        }
     }
+    if (duration_sec <= 0) duration_sec = 180;
     transport_config_t tcfg = transport_config_get(mode);
 
     signal(SIGINT, sig_handler);
@@ -185,54 +203,78 @@ int main(int argc, char *argv[])
     struct sockaddr_in relay_addr = {
         .sin_family = AF_INET, .sin_port = htons(relay_port),
     };
-    if (inet_pton(AF_INET, relay_ip, &relay_addr.sin_addr) != 1) {
-        fprintf(stderr, "Invalid IP: %s\n", relay_ip);
-        return 1;
+
+    if (p2p_mode) {
+        /* P2P mode: bind to the listen port, no relay registration */
+        int opt = 1;
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+        struct sockaddr_in bind_addr = {
+            .sin_family = AF_INET,
+            .sin_addr.s_addr = INADDR_ANY,
+            .sin_port = htons(relay_port),
+        };
+        if (bind(fd, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) < 0) {
+            perror("bind"); close(fd); return 1;
+        }
+        printf("[REMOTE] P2P mode: listening on UDP :%u for %d seconds\n",
+               relay_port, duration_sec);
+        printf("[REMOTE] Transport mode: %s\n", transport_mode_name(mode));
+        transport_config_print(&tcfg, stdout);
+        fflush(stdout);
+    } else {
+        if (inet_pton(AF_INET, relay_ip, &relay_addr.sin_addr) != 1) {
+            fprintf(stderr, "Invalid IP: %s\n", relay_ip);
+            return 1;
+        }
+        printf("[REMOTE] Relay mode: connecting to %s:%u for %d seconds\n",
+               relay_ip, relay_port, duration_sec);
+        printf("[REMOTE] Transport mode: %s\n", transport_mode_name(mode));
+        transport_config_print(&tcfg, stdout);
+        fflush(stdout);
     }
 
-    printf("[REMOTE] Connecting to relay %s:%u for %d seconds\n",
-           relay_ip, relay_port, duration_sec);
-    printf("[REMOTE] Transport mode: %s\n", transport_mode_name(mode));
-    transport_config_print(&tcfg, stdout);
-    fflush(stdout);
-
-    /* ── Register with relay (retry up to 10 times) ───────────────── */
+    /* ── Register with relay (skip in P2P mode) ───────────────────── */
     uint32_t conn_id = 0x524F4201;
-    bool registered = false;
 
-    for (int attempt = 0; attempt < 10 && !registered; attempt++) {
-        pkt_hdr_t hdr = {0};
-        hdr.magic = RC_MAGIC; hdr.version = RC_PROTO_VERSION;
-        hdr.type = RC_PKT_RELAY_REG; hdr.seq = (uint32_t)attempt;
-        hdr.conn_id = conn_id;
-        const char *role = "remote";
-        hdr.payload_len = (uint16_t)strlen(role);
+    if (!p2p_mode) {
+        bool registered = false;
+        for (int attempt = 0; attempt < 10 && !registered; attempt++) {
+            pkt_hdr_t hdr = {0};
+            hdr.magic = RC_MAGIC; hdr.version = RC_PROTO_VERSION;
+            hdr.type = RC_PKT_RELAY_REG; hdr.seq = (uint32_t)attempt;
+            hdr.conn_id = conn_id;
+            const char *role = "remote";
+            hdr.payload_len = (uint16_t)strlen(role);
 
-        uint8_t buf[RC_HEADER_SIZE + 64];
-        hdr_pack(buf, &hdr);
-        memcpy(buf + RC_HEADER_SIZE, role, strlen(role));
-        sendto(fd, buf, RC_HEADER_SIZE + strlen(role), 0,
-               (struct sockaddr *)&relay_addr, sizeof(relay_addr));
+            uint8_t buf[RC_HEADER_SIZE + 64];
+            hdr_pack(buf, &hdr);
+            memcpy(buf + RC_HEADER_SIZE, role, strlen(role));
+            sendto(fd, buf, RC_HEADER_SIZE + strlen(role), 0,
+                   (struct sockaddr *)&relay_addr, sizeof(relay_addr));
 
-        uint8_t rbuf[256];
-        ssize_t n = recv(fd, rbuf, sizeof(rbuf), 0);
-        if (n >= (ssize_t)RC_HEADER_SIZE) {
-            pkt_hdr_t resp;
-            if (hdr_unpack(&resp, rbuf) == 0 && resp.type == RC_PKT_RELAY_ACK) {
-                printf("[REMOTE] Registered with relay, session_id=%u\n", resp.conn_id);
-                fflush(stdout);
-                registered = true;
+            uint8_t rbuf[256];
+            ssize_t n = recv(fd, rbuf, sizeof(rbuf), 0);
+            if (n >= (ssize_t)RC_HEADER_SIZE) {
+                pkt_hdr_t resp;
+                if (hdr_unpack(&resp, rbuf) == 0 && resp.type == RC_PKT_RELAY_ACK) {
+                    printf("[REMOTE] Registered with relay, session_id=%u\n", resp.conn_id);
+                    fflush(stdout);
+                    registered = true;
+                }
+            }
+            if (!registered) {
+                fprintf(stderr, "[REMOTE] Registration attempt %d failed, retrying...\n", attempt + 1);
+                usleep(500000);
             }
         }
         if (!registered) {
-            fprintf(stderr, "[REMOTE] Registration attempt %d failed, retrying...\n", attempt + 1);
-            usleep(500000);
+            fprintf(stderr, "[REMOTE] Failed to register with relay after 10 attempts\n");
+            close(fd);
+            return 1;
         }
-    }
-    if (!registered) {
-        fprintf(stderr, "[REMOTE] Failed to register with relay after 10 attempts\n");
-        close(fd);
-        return 1;
+    } else {
+        printf("[REMOTE] P2P mode: waiting for data...\n");
+        fflush(stdout);
     }
 
     /* ── Init stream states ───────────────────────────────────────── */

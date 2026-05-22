@@ -1,8 +1,9 @@
 /**
  * @file relay_lossy.c
- * @brief Relay server with configurable packet loss simulation.
+ * @brief Relay server with configurable packet loss and bandwidth limiting.
  *
- * Usage: ./relay_lossy <port> <loss_pct>
+ * Usage: ./relay_lossy <port> <loss_pct> [bandwidth_bps]
+ *   bandwidth_bps: 0 = unlimited (default), e.g. 1000000 for 1 Mbps
  */
 
 #define _POSIX_C_SOURCE 200809L
@@ -50,7 +51,45 @@ static uint32_t g_loss_pct = 0;
 static uint64_t g_total_pkts = 0;
 static uint64_t g_total_dropped = 0;
 static uint64_t g_total_bytes = 0;
+static uint64_t g_bw_dropped = 0;
 static uint32_t g_rng_state = 12345;
+
+/* ── Bandwidth limiter (token bucket) ─────────────────────────────── */
+static uint64_t g_bw_limit_bps  = 0;   /* 0 = unlimited */
+static uint64_t g_tokens_bytes  = 0;
+static uint64_t g_max_burst     = 0;   /* max burst in bytes (1s worth) */
+static uint64_t g_last_refill_us = 0;
+
+static uint64_t now_us(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000;
+}
+
+static void refill_tokens(void)
+{
+    if (g_bw_limit_bps == 0) return;
+    uint64_t now = now_us();
+    uint64_t elapsed = now - g_last_refill_us;
+    if (elapsed == 0) return;
+    uint64_t new_tokens = (g_bw_limit_bps * elapsed) / 8000000ULL;
+    g_tokens_bytes += new_tokens;
+    if (g_tokens_bytes > g_max_burst)
+        g_tokens_bytes = g_max_burst;
+    g_last_refill_us = now;
+}
+
+static bool consume_tokens(size_t pkt_size)
+{
+    if (g_bw_limit_bps == 0) return true;
+    refill_tokens();
+    if (g_tokens_bytes >= pkt_size) {
+        g_tokens_bytes -= pkt_size;
+        return true;
+    }
+    return false;
+}
 
 static void sig_handler(int sig) { (void)sig; g_running = false; }
 
@@ -132,9 +171,17 @@ int main(int argc, char *argv[])
 {
     uint16_t port = 19600;
     g_loss_pct = 0;
+    g_bw_limit_bps = 0;
     if (argc > 1) port = (uint16_t)atoi(argv[1]);
     if (argc > 2) g_loss_pct = (uint32_t)atoi(argv[2]);
+    if (argc > 3) g_bw_limit_bps = (uint64_t)atoll(argv[3]);
     if (g_loss_pct > 100) g_loss_pct = 100;
+
+    if (g_bw_limit_bps > 0) {
+        g_max_burst = g_bw_limit_bps / 8;  /* 1 second burst */
+        g_tokens_bytes = g_max_burst;       /* start full */
+        g_last_refill_us = now_us();
+    }
 
     signal(SIGINT, sig_handler);
     signal(SIGTERM, sig_handler);
@@ -155,7 +202,10 @@ int main(int argc, char *argv[])
         perror("bind"); close(fd); return 1;
     }
 
-    printf("[RELAY] Listening on UDP :%u (loss=%u%%)\n", port, g_loss_pct);
+    printf("[RELAY] Listening on UDP :%u (loss=%u%%", port, g_loss_pct);
+    if (g_bw_limit_bps > 0)
+        printf(", bw=%lu bps", (unsigned long)g_bw_limit_bps);
+    printf(")\n");
     fflush(stdout);
 
     g_rng_state = (uint32_t)(now_ms() ^ (port << 16));
@@ -239,6 +289,12 @@ int main(int argc, char *argv[])
             continue;
         }
 
+        /* Bandwidth limiter (token bucket) */
+        if (!consume_tokens((size_t)n)) {
+            g_bw_dropped++;
+            continue;
+        }
+
         /* Forward */
         sendto(fd, buf, (size_t)n, 0, (struct sockaddr *)dst, dst_len);
         fwd_pkts++;
@@ -250,19 +306,24 @@ int main(int argc, char *argv[])
         {
             uint64_t now = now_ms();
             if (now - last_stats_ms >= 5000) {
-                printf("[RELAY] %lus: fwd=%lu dropped=%lu bytes=%lu\n",
+                printf("[RELAY] %lus: fwd=%lu loss_drop=%lu bw_drop=%lu bytes=%lu",
                        (unsigned long)(now / 1000),
                        (unsigned long)fwd_pkts, (unsigned long)g_total_dropped,
-                       (unsigned long)fwd_bytes);
+                       (unsigned long)g_bw_dropped, (unsigned long)fwd_bytes);
+                if (g_bw_limit_bps > 0) {
+                    double actual_bps = (double)fwd_bytes * 8.0 / ((double)(now) / 1000.0);
+                    printf(" actual=%.1f Mbps", actual_bps / 1e6);
+                }
+                printf("\n");
                 fflush(stdout);
                 last_stats_ms = now;
             }
         }
     }
 
-    printf("\n[RELAY] Shutdown: forwarded=%lu dropped=%lu bytes=%lu\n",
+    printf("\n[RELAY] Shutdown: forwarded=%lu loss_drop=%lu bw_drop=%lu bytes=%lu\n",
            (unsigned long)fwd_pkts, (unsigned long)g_total_dropped,
-           (unsigned long)fwd_bytes);
+           (unsigned long)g_bw_dropped, (unsigned long)fwd_bytes);
     fflush(stdout);
 
     free(buf);

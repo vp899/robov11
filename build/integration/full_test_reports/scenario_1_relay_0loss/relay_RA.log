@@ -1,0 +1,18 @@
+[RELAY] Listening on UDP :19600 (loss=0%)
+[RELAY] Registered 'robot' from 127.0.0.1:53960
+[RELAY] Registered 'remote' from 127.0.0.1:36837
+[RELAY] Session 1 READY (robot <-> remote)
+[RELAY] 4329s: fwd=67 loss_drop=0 bw_drop=0 bytes=57922
+[RELAY] 4334s: fwd=227 loss_drop=0 bw_drop=0 bytes=183882
+[RELAY] 4339s: fwd=387 loss_drop=0 bw_drop=0 bytes=309842
+[RELAY] 4344s: fwd=600 loss_drop=0 bw_drop=0 bytes=514476
+[RELAY] 4349s: fwd=760 loss_drop=0 bw_drop=0 bytes=640436
+[RELAY] 4354s: fwd=920 loss_drop=0 bw_drop=0 bytes=766396
+[RELAY] 4359s: fwd=1156 loss_drop=0 bw_drop=0 bytes=1003320
+[RELAY] 4364s: fwd=1316 loss_drop=0 bw_drop=0 bytes=1129280
+[RELAY] 4369s: fwd=1476 loss_drop=0 bw_drop=0 bytes=1255240
+[RELAY] 4374s: fwd=1712 loss_drop=0 bw_drop=0 bytes=1492164
+[RELAY] 4379s: fwd=1872 loss_drop=0 bw_drop=0 bytes=1618124
+[RELAY] 4384s: fwd=2028 loss_drop=0 bw_drop=0 bytes=1739535
+
+[RELAY] Shutdown: forwarded=2062 loss_drop=0 bw_drop=0 bytes=1763391

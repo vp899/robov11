@@ -95,7 +95,18 @@ typedef struct {
 
 /* ── Global state ─────────────────────────────────────────────────── */
 static volatile bool g_running = true;
+static uint32_t g_sender_loss_pct = 0;
+static uint32_t g_loss_rng = 54321;
+static uint64_t g_sender_loss_dropped = 0;
 static void sig_handler(int sig) { (void)sig; g_running = false; }
+
+static uint32_t loss_rand(void)
+{
+    g_loss_rng ^= g_loss_rng << 13;
+    g_loss_rng ^= g_loss_rng >> 17;
+    g_loss_rng ^= g_loss_rng << 5;
+    return g_loss_rng;
+}
 
 static uint64_t now_us(void)
 {
@@ -278,6 +289,17 @@ static void send_frame(stream_state_t *st, int fd,
         uint8_t buf[RC_HEADER_SIZE + RC_MAX_PAYLOAD];
         hdr_pack(buf, &hdr);
         memcpy(buf + RC_HEADER_SIZE, payload, total_payload);
+
+        /* Sender-side packet loss simulation (P2P mode) */
+        if (g_sender_loss_pct > 0 && (loss_rand() % 100) < g_sender_loss_pct) {
+            g_sender_loss_dropped++;
+            /* Still count as sent for pacing purposes */
+            st->total_sent += pkt_size;
+            st->total_pkts++;
+            offset += chunk;
+            continue;
+        }
+
         sendto(fd, buf, pkt_size, 0, dst, dst_len);
 
         /* Enqueue for retransmission if reliable mode */
@@ -296,28 +318,50 @@ static void send_frame(stream_state_t *st, int fd,
 /* ── Main ─────────────────────────────────────────────────────────── */
 int main(int argc, char *argv[])
 {
-    if (argc < 4) {
-        fprintf(stderr, "Usage: %s <relay_ip> <relay_port> <duration_sec> [reliable|realtime]\n", argv[0]);
-        return 1;
+    bool p2p_mode = false;
+    const char *target_ip = NULL;
+    uint16_t target_port = 0;
+    int duration_sec = 0;
+    transport_mode_t mode = TRANSPORT_REALTIME;
+    uint32_t sender_loss_pct = 0;
+
+    if (argc >= 2 && strcmp(argv[1], "p2p") == 0) {
+        /* P2P mode: robot_sender p2p <ip> <port> <duration> [reliable|realtime] [loss_pct] */
+        p2p_mode = true;
+        if (argc < 5) {
+            fprintf(stderr, "Usage: %s p2p <target_ip> <target_port> <duration_sec> [reliable|realtime] [loss_pct]\n", argv[0]);
+            return 1;
+        }
+        target_ip = argv[2];
+        target_port = (uint16_t)atoi(argv[3]);
+        duration_sec = atoi(argv[4]);
+        if (argc > 5) {
+            if (strcmp(argv[5], "reliable") == 0) mode = TRANSPORT_RELIABLE;
+            else if (strcmp(argv[5], "realtime") == 0) mode = TRANSPORT_REALTIME;
+            else { fprintf(stderr, "Unknown mode: %s\n", argv[5]); return 1; }
+        }
+        if (argc > 6) sender_loss_pct = (uint32_t)atoi(argv[6]);
+    } else {
+        /* Relay mode: robot_sender <relay_ip> <relay_port> <duration_sec> [reliable|realtime] */
+        if (argc < 4) {
+            fprintf(stderr, "Usage: %s <relay_ip> <relay_port> <duration_sec> [reliable|realtime]\n", argv[0]);
+            fprintf(stderr, "   or: %s p2p <target_ip> <target_port> <duration_sec> [reliable|realtime] [loss_pct]\n", argv[0]);
+            return 1;
+        }
+        target_ip = argv[1];
+        target_port = (uint16_t)atoi(argv[2]);
+        duration_sec = atoi(argv[3]);
+        if (argc > 4) {
+            if (strcmp(argv[4], "reliable") == 0) mode = TRANSPORT_RELIABLE;
+            else if (strcmp(argv[4], "realtime") == 0) mode = TRANSPORT_REALTIME;
+            else { fprintf(stderr, "Unknown mode: %s\n", argv[4]); return 1; }
+        }
     }
-    const char *relay_ip = argv[1];
-    uint16_t relay_port = (uint16_t)atoi(argv[2]);
-    int duration_sec = atoi(argv[3]);
     if (duration_sec <= 0) duration_sec = 180;
 
     /* Parse transport mode */
-    transport_mode_t mode = TRANSPORT_REALTIME;
-    if (argc > 4) {
-        if (strcmp(argv[4], "reliable") == 0)
-            mode = TRANSPORT_RELIABLE;
-        else if (strcmp(argv[4], "realtime") == 0)
-            mode = TRANSPORT_REALTIME;
-        else {
-            fprintf(stderr, "Unknown mode: %s (use 'reliable' or 'realtime')\n", argv[4]);
-            return 1;
-        }
-    }
     transport_config_t tcfg = transport_config_get(mode);
+    g_sender_loss_pct = sender_loss_pct;
 
     signal(SIGINT, sig_handler);
     signal(SIGTERM, sig_handler);
@@ -330,40 +374,53 @@ int main(int argc, char *argv[])
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     struct sockaddr_in relay_addr = {
-        .sin_family = AF_INET, .sin_port = htons(relay_port),
+        .sin_family = AF_INET, .sin_port = htons(target_port),
     };
-    if (inet_pton(AF_INET, relay_ip, &relay_addr.sin_addr) != 1) {
-        fprintf(stderr, "Invalid relay IP: %s\n", relay_ip);
+    if (inet_pton(AF_INET, target_ip, &relay_addr.sin_addr) != 1) {
+        fprintf(stderr, "Invalid IP: %s\n", target_ip);
         return 1;
     }
 
-    printf("[ROBOT] Connecting to relay %s:%u for %d seconds\n",
-           relay_ip, relay_port, duration_sec);
+    if (p2p_mode) {
+        printf("[ROBOT] P2P mode: sending to %s:%u for %d seconds\n",
+               target_ip, target_port, duration_sec);
+        if (sender_loss_pct > 0)
+            printf("[ROBOT] Sender-side loss simulation: %u%%\n", sender_loss_pct);
+    } else {
+        printf("[ROBOT] Relay mode: connecting to %s:%u for %d seconds\n",
+               target_ip, target_port, duration_sec);
+    }
     printf("[ROBOT] Transport mode: %s\n", transport_mode_name(mode));
     transport_config_print(&tcfg, stdout);
     fflush(stdout);
 
-    /* ── Register with relay ──────────────────────────────────────── */
+    /* ── Register with relay (skip in P2P mode) ───────────────────── */
     uint32_t conn_id = 0x524F4201;
-    pkt_hdr_t hdr = {0};
-    hdr.magic = RC_MAGIC; hdr.version = RC_PROTO_VERSION;
-    hdr.type = RC_PKT_RELAY_REG; hdr.seq = 0; hdr.conn_id = conn_id;
-    const char *role = "robot";
-    hdr.payload_len = (uint16_t)strlen(role);
-    uint8_t buf[RC_HEADER_SIZE + 64];
-    hdr_pack(buf, &hdr);
-    memcpy(buf + RC_HEADER_SIZE, role, strlen(role));
-    sendto(fd, buf, RC_HEADER_SIZE + strlen(role), 0,
-           (struct sockaddr *)&relay_addr, sizeof(relay_addr));
 
-    uint8_t rbuf[RC_HEADER_SIZE + 64];
-    ssize_t n = recv(fd, rbuf, sizeof(rbuf), 0);
-    if (n < (ssize_t)RC_HEADER_SIZE) {
-        fprintf(stderr, "[ROBOT] Relay registration timeout\n");
-        close(fd); return 1;
+    if (!p2p_mode) {
+        pkt_hdr_t hdr = {0};
+        hdr.magic = RC_MAGIC; hdr.version = RC_PROTO_VERSION;
+        hdr.type = RC_PKT_RELAY_REG; hdr.seq = 0; hdr.conn_id = conn_id;
+        const char *role = "robot";
+        hdr.payload_len = (uint16_t)strlen(role);
+        uint8_t buf[RC_HEADER_SIZE + 64];
+        hdr_pack(buf, &hdr);
+        memcpy(buf + RC_HEADER_SIZE, role, strlen(role));
+        sendto(fd, buf, RC_HEADER_SIZE + strlen(role), 0,
+               (struct sockaddr *)&relay_addr, sizeof(relay_addr));
+
+        uint8_t rbuf[RC_HEADER_SIZE + 64];
+        ssize_t n = recv(fd, rbuf, sizeof(rbuf), 0);
+        if (n < (ssize_t)RC_HEADER_SIZE) {
+            fprintf(stderr, "[ROBOT] Relay registration timeout\n");
+            close(fd); return 1;
+        }
+        printf("[ROBOT] Registered with relay\n");
+        fflush(stdout);
+    } else {
+        printf("[ROBOT] P2P mode: no relay registration needed\n");
+        fflush(stdout);
     }
-    printf("[ROBOT] Registered with relay\n");
-    fflush(stdout);
 
     /* ── Initialize retransmission queue (reliable mode only) ─────── */
     retx_queue_t retx;
@@ -418,6 +475,7 @@ int main(int argc, char *argv[])
                            &tcfg, &retx);
             }
 
+            st->frame_num++;
             st->next_frame_us += frame_interval_us;
             if (st->next_frame_us < now) st->next_frame_us = now;
             sent_any = true;
@@ -504,15 +562,22 @@ int main(int argc, char *argv[])
         printf("[ROBOT]   Timeout retx:  %lu\n", (unsigned long)retx.timeout_retransmits);
         printf("[ROBOT]   Total acked:   %lu\n", (unsigned long)retx.total_acked);
     }
+    if (g_sender_loss_pct > 0) {
+        printf("[ROBOT] Sender-side loss: %u%% (dropped=%lu)\n",
+               g_sender_loss_pct, (unsigned long)g_sender_loss_dropped);
+    }
     fflush(stdout);
 
     /* FIN */
-    memset(&hdr, 0, sizeof(hdr));
-    hdr.magic = RC_MAGIC; hdr.version = RC_PROTO_VERSION;
-    hdr.type = RC_PKT_FIN; hdr.seq = 0; hdr.conn_id = conn_id;
-    hdr_pack(buf, &hdr);
-    sendto(fd, buf, RC_HEADER_SIZE, 0,
-           (struct sockaddr *)&relay_addr, sizeof(relay_addr));
+    {
+        pkt_hdr_t fin_hdr = {0};
+        fin_hdr.magic = RC_MAGIC; fin_hdr.version = RC_PROTO_VERSION;
+        fin_hdr.type = RC_PKT_FIN; fin_hdr.seq = 0; fin_hdr.conn_id = conn_id;
+        uint8_t fin_buf[RC_HEADER_SIZE];
+        hdr_pack(fin_buf, &fin_hdr);
+        sendto(fd, fin_buf, RC_HEADER_SIZE, 0,
+               (struct sockaddr *)&relay_addr, sizeof(relay_addr));
+    }
 
     free(iframe_buf); free(pframe_buf); close(fd);
     return 0;

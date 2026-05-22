@@ -1,0 +1,66 @@
+[RELAY] Listening on UDP :19601 (loss=0%, bw=1000000 bps)
+[RELAY] Registered 'robot' from 127.0.0.1:46310
+[RELAY] Registered 'remote' from 127.0.0.1:53553
+[RELAY] Session 1 READY (robot <-> remote)
+[RELAY] 4498s: fwd=44 loss_drop=0 bw_drop=0 bytes=39060 actual=0.0 Mbps
+[RELAY] 4503s: fwd=204 loss_drop=0 bw_drop=0 bytes=165020 actual=0.0 Mbps
+[RELAY] 4508s: fwd=364 loss_drop=0 bw_drop=0 bytes=290980 actual=0.0 Mbps
+[RELAY] 4513s: fwd=596 loss_drop=0 bw_drop=0 bytes=523355 actual=0.0 Mbps
+[RELAY] 4518s: fwd=756 loss_drop=0 bw_drop=0 bytes=649315 actual=0.0 Mbps
+[RELAY] 4523s: fwd=916 loss_drop=0 bw_drop=0 bytes=775275 actual=0.0 Mbps
+[RELAY] 4528s: fwd=1148 loss_drop=0 bw_drop=0 bytes=1007650 actual=0.0 Mbps
+[RELAY] 4533s: fwd=1308 loss_drop=0 bw_drop=0 bytes=1133610 actual=0.0 Mbps
+[RELAY] 4538s: fwd=1468 loss_drop=0 bw_drop=0 bytes=1259570 actual=0.0 Mbps
+[RELAY] 4543s: fwd=1700 loss_drop=0 bw_drop=0 bytes=1491945 actual=0.0 Mbps
+[RELAY] 4548s: fwd=1860 loss_drop=0 bw_drop=0 bytes=1617905 actual=0.0 Mbps
+[RELAY] 4553s: fwd=2020 loss_drop=0 bw_drop=0 bytes=1743865 actual=0.0 Mbps
+[RELAY] 4558s: fwd=2252 loss_drop=0 bw_drop=0 bytes=1976240 actual=0.0 Mbps
+[RELAY] 4563s: fwd=2408 loss_drop=0 bw_drop=0 bytes=2097651 actual=0.0 Mbps
+[RELAY] 4568s: fwd=2568 loss_drop=0 bw_drop=0 bytes=2223611 actual=0.0 Mbps
+[RELAY] 4573s: fwd=2800 loss_drop=0 bw_drop=0 bytes=2455986 actual=0.0 Mbps
+[RELAY] 4578s: fwd=2956 loss_drop=0 bw_drop=0 bytes=2577397 actual=0.0 Mbps
+[RELAY] 4583s: fwd=3116 loss_drop=0 bw_drop=0 bytes=2703357 actual=0.0 Mbps
+[RELAY] 4588s: fwd=3348 loss_drop=0 bw_drop=0 bytes=2935732 actual=0.0 Mbps
+[RELAY] 4593s: fwd=3508 loss_drop=0 bw_drop=0 bytes=3061692 actual=0.0 Mbps
+[RELAY] 4598s: fwd=3668 loss_drop=0 bw_drop=0 bytes=3187652 actual=0.0 Mbps
+[RELAY] 4603s: fwd=3900 loss_drop=0 bw_drop=0 bytes=3420027 actual=0.0 Mbps
+[RELAY] 4608s: fwd=4060 loss_drop=0 bw_drop=0 bytes=3545987 actual=0.0 Mbps
+[RELAY] 4613s: fwd=4220 loss_drop=0 bw_drop=0 bytes=3671947 actual=0.0 Mbps
+[RELAY] 4618s: fwd=4452 loss_drop=0 bw_drop=0 bytes=3904322 actual=0.0 Mbps
+[RELAY] 4623s: fwd=4612 loss_drop=0 bw_drop=0 bytes=4030282 actual=0.0 Mbps
+[RELAY] 4628s: fwd=4772 loss_drop=0 bw_drop=0 bytes=4156242 actual=0.0 Mbps
+[RELAY] 4633s: fwd=5004 loss_drop=0 bw_drop=0 bytes=4388617 actual=0.0 Mbps
+[RELAY] 4638s: fwd=5164 loss_drop=0 bw_drop=0 bytes=4514577 actual=0.0 Mbps
+[RELAY] 4643s: fwd=5324 loss_drop=0 bw_drop=0 bytes=4640537 actual=0.0 Mbps
+[RELAY] 4648s: fwd=5556 loss_drop=0 bw_drop=0 bytes=4872912 actual=0.0 Mbps
+[RELAY] 4653s: fwd=5716 loss_drop=0 bw_drop=0 bytes=4998872 actual=0.0 Mbps
+[RELAY] 4658s: fwd=5876 loss_drop=0 bw_drop=0 bytes=5124832 actual=0.0 Mbps
+[RELAY] 4663s: fwd=6108 loss_drop=0 bw_drop=0 bytes=5357207 actual=0.0 Mbps
+[RELAY] 4668s: fwd=6268 loss_drop=0 bw_drop=0 bytes=5483167 actual=0.0 Mbps
+[RELAY] 4673s: fwd=6428 loss_drop=0 bw_drop=0 bytes=5609127 actual=0.0 Mbps
+[RELAY] 4678s: fwd=6660 loss_drop=0 bw_drop=0 bytes=5841502 actual=0.0 Mbps
+[RELAY] 4683s: fwd=6820 loss_drop=0 bw_drop=0 bytes=5967462 actual=0.0 Mbps
+[RELAY] 4688s: fwd=6980 loss_drop=0 bw_drop=0 bytes=6093422 actual=0.0 Mbps
+[RELAY] 4693s: fwd=7212 loss_drop=0 bw_drop=0 bytes=6325797 actual=0.0 Mbps
+[RELAY] 4698s: fwd=7372 loss_drop=0 bw_drop=0 bytes=6451757 actual=0.0 Mbps
+[RELAY] 4703s: fwd=7532 loss_drop=0 bw_drop=0 bytes=6577717 actual=0.0 Mbps
+[RELAY] 4708s: fwd=7764 loss_drop=0 bw_drop=0 bytes=6810092 actual=0.0 Mbps
+[RELAY] 4713s: fwd=7924 loss_drop=0 bw_drop=0 bytes=6936052 actual=0.0 Mbps
+[RELAY] 4718s: fwd=8084 loss_drop=0 bw_drop=0 bytes=7062012 actual=0.0 Mbps
+[RELAY] 4723s: fwd=8316 loss_drop=0 bw_drop=0 bytes=7294387 actual=0.0 Mbps
+[RELAY] 4728s: fwd=8476 loss_drop=0 bw_drop=0 bytes=7420347 actual=0.0 Mbps
+[RELAY] 4733s: fwd=8636 loss_drop=0 bw_drop=0 bytes=7546307 actual=0.0 Mbps
+[RELAY] 4738s: fwd=8868 loss_drop=0 bw_drop=0 bytes=7778682 actual=0.0 Mbps
+[RELAY] 4743s: fwd=9028 loss_drop=0 bw_drop=0 bytes=7904642 actual=0.0 Mbps
+[RELAY] 4748s: fwd=9188 loss_drop=0 bw_drop=0 bytes=8030602 actual=0.0 Mbps
+[RELAY] 4753s: fwd=9420 loss_drop=0 bw_drop=0 bytes=8262977 actual=0.0 Mbps
+[RELAY] 4758s: fwd=9580 loss_drop=0 bw_drop=0 bytes=8388937 actual=0.0 Mbps
+[RELAY] 4763s: fwd=9740 loss_drop=0 bw_drop=0 bytes=8514897 actual=0.0 Mbps
+[RELAY] 4768s: fwd=9972 loss_drop=0 bw_drop=0 bytes=8747272 actual=0.0 Mbps
+[RELAY] 4773s: fwd=10132 loss_drop=0 bw_drop=0 bytes=8873232 actual=0.0 Mbps
+[RELAY] 4778s: fwd=10292 loss_drop=0 bw_drop=0 bytes=8999192 actual=0.0 Mbps
+[RELAY] 4783s: fwd=10524 loss_drop=0 bw_drop=0 bytes=9231567 actual=0.0 Mbps
+[RELAY] 4788s: fwd=10684 loss_drop=0 bw_drop=0 bytes=9357527 actual=0.0 Mbps
+[RELAY] 4793s: fwd=10844 loss_drop=0 bw_drop=0 bytes=9483487 actual=0.0 Mbps
+
+[RELAY] Shutdown: forwarded=10878 loss_drop=0 bw_drop=0 bytes=9507343

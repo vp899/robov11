@@ -1,0 +1,4 @@
+[RELAY] Listening on UDP :19602 (loss=0%)
+[RELAY] Registered 'robot' from 127.0.0.1:59344
+
+[RELAY] Shutdown: forwarded=0 loss_drop=0 bw_drop=0 bytes=0
