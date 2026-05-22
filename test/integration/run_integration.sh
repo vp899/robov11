@@ -69,7 +69,18 @@ cleanup() {
             kill -TERM "$pid" 2>/dev/null || true
         fi
     done
-    wait 2>/dev/null || true
+    # Wait only for our specific PIDs
+    for pid in "${PIDS[@]:-}"; do
+        if [ -n "$pid" ]; then
+            wait "$pid" 2>/dev/null || true
+        fi
+    done
+    # Force kill any stragglers
+    for pid in "${PIDS[@]:-}"; do
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            kill -9 "$pid" 2>/dev/null || true
+        fi
+    done
     PIDS=()
 }
 

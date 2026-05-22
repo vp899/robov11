@@ -36,6 +36,7 @@ typedef struct __attribute__((packed)) {
 } pkt_hdr_t;
 
 /* ── Single session state ─────────────────────────────────────────── */
+#include <sys/poll.h>
 static struct sockaddr_storage g_peer_robot;
 static socklen_t               g_peer_robot_len;
 static struct sockaddr_storage g_peer_remote;
@@ -164,6 +165,11 @@ int main(int argc, char *argv[])
     uint64_t fwd_pkts = 0, fwd_bytes = 0;
 
     while (g_running) {
+        /* Use poll to add a timeout so we can check g_running */
+        struct pollfd pfd = { .fd = fd, .events = POLLIN };
+        int pret = poll(&pfd, 1, 1000);  /* 1s timeout */
+        if (pret <= 0) continue;
+
         struct sockaddr_storage from;
         socklen_t from_len = sizeof(from);
         ssize_t n = recvfrom(fd, buf, RECV_BUF_SIZE, 0,
@@ -241,14 +247,16 @@ int main(int argc, char *argv[])
         g_total_bytes += (uint64_t)n;
 
         /* Periodic stats */
-        uint64_t now = now_ms();
-        if (now - last_stats_ms >= 5000) {
-            printf("[RELAY] %lus: fwd=%lu dropped=%lu bytes=%lu\n",
-                   (unsigned long)((now - now_ms() + now_ms()) / 1000),
-                   (unsigned long)fwd_pkts, (unsigned long)g_total_dropped,
-                   (unsigned long)fwd_bytes);
-            fflush(stdout);
-            last_stats_ms = now;
+        {
+            uint64_t now = now_ms();
+            if (now - last_stats_ms >= 5000) {
+                printf("[RELAY] %lus: fwd=%lu dropped=%lu bytes=%lu\n",
+                       (unsigned long)(now / 1000),
+                       (unsigned long)fwd_pkts, (unsigned long)g_total_dropped,
+                       (unsigned long)fwd_bytes);
+                fflush(stdout);
+                last_stats_ms = now;
+            }
         }
     }
 

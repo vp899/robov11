@@ -27,6 +27,7 @@
 #include "rc_proto.h"
 #include "rc_crypto.h"
 #include "rc_congestion.h"
+#include "rc_pacing.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -128,6 +129,10 @@ struct rc_conn {
 
     /* --- congestion control --- */
     rc_cubic_t        cubic;          /**< CUBIC congestion state       */
+
+    /* --- pacing --- */
+    rc_pacer_t        pacer;          /**< Send pacer (rate limiter)    */
+    bool              pacing_enabled; /**< True if pacing is active     */
 
     /* --- sequence tracking --- */
     uint32_t          local_seq;      /**< Next outgoing sequence #     */
@@ -306,6 +311,36 @@ const char *rc_conn_state_name(rc_conn_state_t state);
  * @return Number of connections purged.
  */
 int rc_conn_purge_timeouts(rc_conn_pool_t *pool, uint32_t timeout_ms);
+
+/**
+ * @brief Enable pacing on a connection.
+ *
+ * Sets the pacer to the given rate.  All subsequent sends through
+ * rc_conn_send_paced() will be rate-limited.
+ *
+ * @param conn      Connection.
+ * @param rate_bps  Target rate in bits/sec.
+ */
+void rc_conn_enable_pacing(rc_conn_t *conn, uint64_t rate_bps);
+
+/**
+ * @brief Disable pacing on a connection.
+ * @param conn  Connection.
+ */
+void rc_conn_disable_pacing(rc_conn_t *conn);
+
+/**
+ * @brief Send a packet through the connection with optional pacing.
+ *
+ * If pacing is enabled, blocks until the pacer allows the send.
+ * If pacing is disabled, sends immediately (no rate limit).
+ *
+ * @param conn   Connection (must be ESTABLISHED).
+ * @param data   Packet data (header + payload).
+ * @param len    Packet length in bytes.
+ * @return 0 on success, -1 on error.
+ */
+int rc_conn_send_paced(rc_conn_t *conn, const uint8_t *data, size_t len);
 
 #ifdef __cplusplus
 }

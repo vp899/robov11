@@ -6,6 +6,7 @@
 
 #include "rc_conn.h"
 #include "rc_proto.h"
+#include "rc_pacing.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -13,6 +14,7 @@
 #include <errno.h>
 #include <syslog.h>
 #include <sys/time.h>
+#include <sys/socket.h>
 
 /* ================================================================== */
 /*  Ring buffer (lock-free SPSC)                                       */
@@ -459,4 +461,53 @@ int rc_conn_purge_timeouts(rc_conn_pool_t *pool, uint32_t timeout_ms)
     }
 
     return purged;
+}
+
+/* ================================================================== */
+/*  Pacing send                                                        */
+/* ================================================================== */
+
+void rc_conn_enable_pacing(rc_conn_t *conn, uint64_t rate_bps)
+{
+    if (!conn) return;
+    rc_pacer_init(&conn->pacer, rate_bps);
+    conn->pacing_enabled = true;
+    syslog(LOG_INFO, "rc_conn: pacing enabled on conn_id=%u at %lu bps",
+           conn->conn_id, (unsigned long)rate_bps);
+}
+
+void rc_conn_disable_pacing(rc_conn_t *conn)
+{
+    if (!conn) return;
+    conn->pacing_enabled = false;
+    syslog(LOG_INFO, "rc_conn: pacing disabled on conn_id=%u", conn->conn_id);
+}
+
+int rc_conn_send_paced(rc_conn_t *conn, const uint8_t *data, size_t len)
+{
+    if (!conn || conn->fd < 0 || !data || len == 0) return -1;
+
+    /* Pace the send if enabled */
+    if (conn->pacing_enabled) {
+        rc_pacer_wait(&conn->pacer, len);
+    }
+
+    /* Actual send via the connection's socket */
+    ssize_t sent = send(conn->fd, data, len, MSG_NOSIGNAL);
+    if (sent < 0) {
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            syslog(LOG_ERR, "rc_conn: send failed on conn_id=%u: %s",
+                   conn->conn_id, strerror(errno));
+            return -1;
+        }
+        /* Would-block — caller should retry */
+        return -1;
+    }
+
+    /* Update stats */
+    conn->bytes_sent += (uint64_t)sent;
+    conn->pkts_sent++;
+    gettimeofday(&conn->last_send, NULL);
+
+    return 0;
 }
