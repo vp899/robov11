@@ -3,7 +3,11 @@
  * @brief Remote control — receives H.264 streams via relay, validates,
  *        records per-packet latency, generates report.
  *
- * Usage: ./remote_receiver <relay_ip> <relay_port> <duration_sec> <output_prefix>
+ * Supports two transport modes:
+ *   - RELIABLE:  Sends ACKs back, expects 100% delivery.
+ *   - REALTIME:  No ACKs, measures pure latency.
+ *
+ * Usage: ./remote_receiver <relay_ip> <relay_port> <duration_sec> <output_prefix> [reliable|realtime]
  */
 
 #define _GNU_SOURCE
@@ -21,9 +25,11 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <time.h>
+#include <poll.h>
 
 #include "latency_stats.h"
 #include "h264_gen.h"
+#include "transport_mode.h"
 
 /* ── Protocol ─────────────────────────────────────────────────────── */
 #define RC_MAGIC            0x524F424FU
@@ -31,10 +37,21 @@
 #define RC_HEADER_SIZE      32
 #define RC_MAX_PAYLOAD      1400
 #define RC_PKT_DATA         0x0003
+#define RC_PKT_ACK          0x0004
 #define RC_PKT_RELAY_REG    0x0010
 #define RC_PKT_RELAY_ACK    0x0011
 #define NUM_STREAMS         2
+#define RC_FLAG_SACK        (1 << 2)
 
+/* ── SACK block ───────────────────────────────────────────────────── */
+typedef struct {
+    uint32_t left_edge;
+    uint32_t right_edge;
+} sack_block_t;
+
+#define MAX_SACK_BLOCKS 4
+
+/* ── Packet header ────────────────────────────────────────────────── */
 typedef struct __attribute__((packed)) {
     uint32_t magic; uint16_t version; uint16_t type;
     uint32_t seq; uint32_t ack; uint64_t timestamp;
@@ -54,6 +71,14 @@ typedef struct {
     bool        have_last_frame;
     latency_stats_t lat;
 } stream_rx_t;
+
+/* ── ACK tracking (for reliable mode) ─────────────────────────────── */
+typedef struct {
+    uint32_t    highest_seq;        /* Highest seq received per stream */
+    bool        have_highest;
+    uint32_t    ack_count;          /* Number of ACKs sent */
+    uint64_t    last_ack_ms;        /* Last ACK send time */
+} ack_state_t;
 
 static volatile bool g_running = true;
 static void sig_handler(int sig) { (void)sig; g_running = false; }
@@ -104,10 +129,27 @@ static void hdr_pack(uint8_t *d, const pkt_hdr_t *h)
     d[30]=(h->conn_id>>8)&0xFF; d[31]=h->conn_id&0xFF;
 }
 
+/* ── Send cumulative ACK ──────────────────────────────────────────── */
+static void send_ack(int fd, const struct sockaddr *dst, socklen_t dst_len,
+                     uint32_t conn_id, uint32_t ack_seq, uint16_t flags)
+{
+    pkt_hdr_t hdr = {0};
+    hdr.magic = RC_MAGIC;
+    hdr.version = RC_PROTO_VERSION;
+    hdr.type = RC_PKT_ACK;
+    hdr.ack = ack_seq;
+    hdr.conn_id = conn_id;
+    hdr.flags = flags;
+    hdr.timestamp = now_us();
+    uint8_t buf[RC_HEADER_SIZE];
+    hdr_pack(buf, &hdr);
+    sendto(fd, buf, RC_HEADER_SIZE, 0, dst, dst_len);
+}
+
 int main(int argc, char *argv[])
 {
     if (argc < 5) {
-        fprintf(stderr, "Usage: %s <relay_ip> <relay_port> <duration_sec> <output_prefix>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <relay_ip> <relay_port> <duration_sec> <output_prefix> [reliable|realtime]\n", argv[0]);
         return 1;
     }
     const char *relay_ip = argv[1];
@@ -116,11 +158,27 @@ int main(int argc, char *argv[])
     const char *output_prefix = argv[4];
     if (duration_sec <= 0) duration_sec = 180;
 
+    /* Parse transport mode */
+    transport_mode_t mode = TRANSPORT_REALTIME;
+    if (argc > 5) {
+        if (strcmp(argv[5], "reliable") == 0)
+            mode = TRANSPORT_RELIABLE;
+        else if (strcmp(argv[5], "realtime") == 0)
+            mode = TRANSPORT_REALTIME;
+        else {
+            fprintf(stderr, "Unknown mode: %s (use 'reliable' or 'realtime')\n", argv[5]);
+            return 1;
+        }
+    }
+    transport_config_t tcfg = transport_config_get(mode);
+
     signal(SIGINT, sig_handler);
     signal(SIGTERM, sig_handler);
 
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd < 0) { perror("socket"); return 1; }
+    int bufsize = 4 * 1024 * 1024;
+    setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &bufsize, sizeof(bufsize));
     struct timeval tv = { .tv_sec = 3, .tv_usec = 0 };
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
@@ -134,13 +192,15 @@ int main(int argc, char *argv[])
 
     printf("[REMOTE] Connecting to relay %s:%u for %d seconds\n",
            relay_ip, relay_port, duration_sec);
+    printf("[REMOTE] Transport mode: %s\n", transport_mode_name(mode));
+    transport_config_print(&tcfg, stdout);
     fflush(stdout);
 
-    /* ── Register with relay (retry up to 5 times) ────────────────── */
+    /* ── Register with relay (retry up to 10 times) ───────────────── */
     uint32_t conn_id = 0x524F4201;
     bool registered = false;
 
-    for (int attempt = 0; attempt < 5 && !registered; attempt++) {
+    for (int attempt = 0; attempt < 10 && !registered; attempt++) {
         pkt_hdr_t hdr = {0};
         hdr.magic = RC_MAGIC; hdr.version = RC_PROTO_VERSION;
         hdr.type = RC_PKT_RELAY_REG; hdr.seq = (uint32_t)attempt;
@@ -170,7 +230,7 @@ int main(int argc, char *argv[])
         }
     }
     if (!registered) {
-        fprintf(stderr, "[REMOTE] Failed to register with relay after 5 attempts\n");
+        fprintf(stderr, "[REMOTE] Failed to register with relay after 10 attempts\n");
         close(fd);
         return 1;
     }
@@ -184,10 +244,15 @@ int main(int argc, char *argv[])
         lat_init(&streams[i].lat);
     }
 
+    /* ACK state for reliable mode */
+    ack_state_t *ack_states = NULL;
+    if (tcfg.send_acks) {
+        ack_states = calloc(NUM_STREAMS, sizeof(ack_state_t));
+    }
+
     uint64_t total_packets = 0, total_bytes = 0;
     uint32_t protocol_errors = 0;
 
-    /* Receive buffer — heap allocated to avoid stack overflow */
     uint8_t *rbuf = malloc(65536);
     if (!rbuf) { fprintf(stderr, "OOM\n"); return 1; }
 
@@ -195,6 +260,7 @@ int main(int argc, char *argv[])
     uint64_t start_ms = now_ms();
     uint64_t end_ms = start_ms + (uint64_t)duration_sec * 1000;
     uint64_t last_report = start_ms;
+    uint64_t last_ack_send = start_ms;
 
     printf("[REMOTE] Waiting for data...\n");
     fflush(stdout);
@@ -219,7 +285,7 @@ int main(int argc, char *argv[])
         total_packets++;
         total_bytes += (uint64_t)n;
 
-        /* Parse inner payload: [stream_id(2)] [frame_num(4)] [is_iframe(1)] [h264...] */
+        /* Parse inner payload */
         uint16_t plen = hdr.payload_len;
         if (plen < 7) { protocol_errors++; continue; }
 
@@ -241,12 +307,20 @@ int main(int argc, char *argv[])
             lat_record(&overall_lat, hdr.seq, stream_id, hdr.timestamp, recv_ts, plen);
         }
 
-        /* Frame tracking — detect new frame by frame_num change */
+        /* Update ACK state for reliable mode */
+        if (tcfg.send_acks && ack_states) {
+            ack_state_t *as = &ack_states[stream_id - 1];
+            if (!as->have_highest || hdr.seq > as->highest_seq) {
+                as->highest_seq = hdr.seq;
+                as->have_highest = true;
+            }
+        }
+
+        /* Frame tracking */
         if (!st->have_last_frame) {
             st->last_frame_num = frame_num;
             st->have_last_frame = true;
             st->received_frames = 1;
-            /* This is the first packet of the first frame — verify structure */
             const uint8_t *h264_data = payload + 7;
             size_t h264_len = plen - 7;
             if (h264_len >= 5) {
@@ -260,13 +334,10 @@ int main(int argc, char *argv[])
                 }
             }
         } else if (frame_num != st->last_frame_num) {
-            /* New frame started — this packet is the first of the new frame */
             st->received_frames++;
             if (frame_num > st->last_frame_num + 1)
                 st->missing_frames += frame_num - st->last_frame_num - 1;
             st->last_frame_num = frame_num;
-
-            /* Verify H.264 structure of first packet of new frame */
             const uint8_t *h264_data = payload + 7;
             size_t h264_len = plen - 7;
             if (h264_len >= 5) {
@@ -280,8 +351,22 @@ int main(int argc, char *argv[])
                 }
             }
         }
-        /* Continuation packets of the same frame are not checked for
-         * structure — they are mid-frame data chunks without start codes. */
+
+        /* Periodic ACK send (reliable mode) */
+        if (tcfg.send_acks && ack_states) {
+            uint64_t now = now_ms();
+            if (now - last_ack_send >= tcfg.ack_interval_ms) {
+                for (int i = 0; i < NUM_STREAMS; i++) {
+                    if (ack_states[i].have_highest) {
+                        send_ack(fd, (struct sockaddr *)&relay_addr,
+                                 sizeof(relay_addr), conn_id,
+                                 ack_states[i].highest_seq, 0);
+                        ack_states[i].ack_count++;
+                    }
+                }
+                last_ack_send = now;
+            }
+        }
 
         /* Periodic report */
         uint64_t now = now_ms();
@@ -297,8 +382,20 @@ int main(int argc, char *argv[])
         }
     }
 
+    /* ── Send final ACKs ──────────────────────────────────────────── */
+    if (tcfg.send_acks && ack_states) {
+        for (int i = 0; i < NUM_STREAMS; i++) {
+            if (ack_states[i].have_highest) {
+                send_ack(fd, (struct sockaddr *)&relay_addr,
+                         sizeof(relay_addr), conn_id,
+                         ack_states[i].highest_seq, 0);
+            }
+        }
+    }
+
     /* ── Generate report ──────────────────────────────────────────── */
     printf("\n[REMOTE] === Final Report ===\n");
+    printf("[REMOTE] Transport: %s\n", transport_mode_name(mode));
     printf("[REMOTE] Total packets: %lu  bytes: %lu  errors: %u\n",
            (unsigned long)total_packets, (unsigned long)total_bytes, protocol_errors);
     fflush(stdout);
@@ -311,7 +408,9 @@ int main(int argc, char *argv[])
     fprintf(report, "═══════════════════════════════════════════════════════════════\n");
     fprintf(report, "  RoboControl Integration Test Report\n");
     fprintf(report, "═══════════════════════════════════════════════════════════════\n\n");
-    fprintf(report, "Total packets: %lu\n", (unsigned long)total_packets);
+    fprintf(report, "Transport mode:  %s\n", transport_mode_name(mode));
+    transport_config_print(&tcfg, report);
+    fprintf(report, "\nTotal packets: %lu\n", (unsigned long)total_packets);
     fprintf(report, "Total bytes:   %lu\n", (unsigned long)total_bytes);
     fprintf(report, "Proto errors:  %u\n\n", protocol_errors);
 
@@ -325,13 +424,13 @@ int main(int argc, char *argv[])
             : 0.0;
 
         fprintf(report, "─── %s ───\n", label);
-        fprintf(report, "  Packets:      %u\n", st->received_packets);
-        fprintf(report, "  Frames:       %u\n", st->received_frames);
-        fprintf(report, "  Bytes:        %lu\n", (unsigned long)st->received_bytes);
-        fprintf(report, "  Corrupted:    %u\n", st->corrupted_packets);
-        fprintf(report, "  Bad structure:%u\n", st->invalid_structure);
-        fprintf(report, "  Missing frames: %u\n", st->missing_frames);
-        fprintf(report, "  Correctness:  %.2f%%\n\n", correct_pct);
+        fprintf(report, "  Packets:       %u\n", st->received_packets);
+        fprintf(report, "  Frames:        %u\n", st->received_frames);
+        fprintf(report, "  Bytes:         %lu\n", (unsigned long)st->received_bytes);
+        fprintf(report, "  Corrupted:     %u\n", st->corrupted_packets);
+        fprintf(report, "  Bad structure: %u\n", st->invalid_structure);
+        fprintf(report, "  Missing frames:%u\n", st->missing_frames);
+        fprintf(report, "  Correctness:   %.2f%%\n\n", correct_pct);
 
         lat_report(&st->lat, label, 0, report);
     }
@@ -349,6 +448,16 @@ int main(int argc, char *argv[])
     }
     fprintf(report, "  Total:    %.2f Mbps\n",
             dur_s > 0 ? (double)total_bytes * 8.0 / dur_s / 1e6 : 0);
+
+    /* ACK stats for reliable mode */
+    if (tcfg.send_acks && ack_states) {
+        fprintf(report, "\n─── ACK Statistics (Reliable Mode) ───\n");
+        for (int i = 0; i < NUM_STREAMS; i++) {
+            fprintf(report, "  Stream %u: ACKs sent=%u highest_seq=%u\n",
+                    i + 1, ack_states[i].ack_count, ack_states[i].highest_seq);
+        }
+    }
+
     fprintf(report, "\n═══════════════════════════════════════════════════════════════\n");
 
     if (report != stdout) {
@@ -358,6 +467,7 @@ int main(int argc, char *argv[])
     fflush(stdout);
 
     free(streams);
+    free(ack_states);
     free(rbuf);
     close(fd);
     return 0;

@@ -36,7 +36,7 @@ REMOTE_BIN   := $(BINDIR)/remote_receiver
 
 BINS := $(RELAY_BIN) $(SIGNAL_BIN) $(ROBOT_BIN) $(REMOTE_BIN)
 
-.PHONY: all clean run
+.PHONY: all clean run run-reliable run-realtime
 
 all: $(BINS)
 
@@ -49,14 +49,20 @@ $(RELAY_BIN): $(RELAY_SRC) | $(BINDIR)
 $(SIGNAL_BIN): $(SIGNAL_SRC) | $(BINDIR)
 	$(CC) $(CFLAGS) -o $@ $(SIGNAL_SRC) $(LDFLAGS)
 
-$(ROBOT_BIN): $(ROBOT_SRC) pacing.h h264_gen.h | $(BINDIR)
+$(ROBOT_BIN): $(ROBOT_SRC) pacing.h h264_gen.h transport_mode.h | $(BINDIR)
 	$(CC) $(CFLAGS) -o $@ $(ROBOT_SRC) $(LDFLAGS)
 
-$(REMOTE_BIN): $(REMOTE_SRC) latency_stats.h h264_gen.h | $(BINDIR)
+$(REMOTE_BIN): $(REMOTE_SRC) latency_stats.h h264_gen.h transport_mode.h | $(BINDIR)
 	$(CC) $(CFLAGS) -o $@ $(REMOTE_SRC) $(LDFLAGS)
 
 run: all
 	./run_integration.sh
+
+run-reliable: all
+	./run_integration.sh 180 5 reliable
+
+run-realtime: all
+	./run_integration.sh 180 5 realtime
 
 clean:
 	rm -rf $(BINDIR)

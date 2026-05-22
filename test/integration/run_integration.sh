@@ -11,8 +11,8 @@
 #    3. robot_sender    — Sends 2× H.264 streams (1 Mbps each)
 #    4. remote_receiver — Receives + validates + measures latency
 #
-#  Usage: ./run_integration.sh [duration_sec] [loss_rates...]
-#    Default: 180 seconds, loss rates 0 5 10 20 30
+#  Usage: ./run_integration.sh [duration_sec] [loss_rates...] [reliable|realtime]
+#    Default: 180 seconds, loss rates 0 5 10 20 30, mode=realtime
 # ─────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
@@ -24,9 +24,21 @@ REPORT_DIR="$SCRIPT_DIR/../../build/integration/reports"
 # ── Configuration ───────────────────────────────────────────────────
 DURATION="${1:-180}"
 shift 2>/dev/null || true
-if [ $# -gt 0 ]; then
-    LOSS_RATES=("$@")
-else
+
+# Parse arguments: find the transport mode (last arg if it's reliable/realtime)
+TRANSPORT_MODE="realtime"
+LOSS_RATES=()
+
+for arg in "$@"; do
+    if [ "$arg" = "reliable" ] || [ "$arg" = "realtime" ]; then
+        TRANSPORT_MODE="$arg"
+    else
+        LOSS_RATES+=("$arg")
+    fi
+done
+
+# Default loss rates if none specified
+if [ ${#LOSS_RATES[@]} -eq 0 ]; then
     LOSS_RATES=(0 5 10 20 30)
 fi
 
@@ -39,12 +51,14 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
 log() { echo -e "${BLUE}[TEST]${NC} $*"; }
 ok()  { echo -e "${GREEN}[  OK]${NC} $*"; }
 warn(){ echo -e "${YELLOW}[WARN]${NC} $*"; }
 err() { echo -e "${RED}[FAIL]${NC} $*"; }
+mode(){ echo -e "${CYAN}[MODE]${NC} $*"; }
 
 # ── Check binaries ──────────────────────────────────────────────────
 check_bins() {
@@ -69,13 +83,11 @@ cleanup() {
             kill -TERM "$pid" 2>/dev/null || true
         fi
     done
-    # Wait only for our specific PIDs
     for pid in "${PIDS[@]:-}"; do
         if [ -n "$pid" ]; then
             wait "$pid" 2>/dev/null || true
         fi
     done
-    # Force kill any stragglers
     for pid in "${PIDS[@]:-}"; do
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
             kill -9 "$pid" 2>/dev/null || true
@@ -89,12 +101,12 @@ trap cleanup EXIT INT TERM
 # ── Run a single test ───────────────────────────────────────────────
 run_single_test() {
     local loss_pct="$1"
-    local test_name="loss_${loss_pct}pct"
+    local test_name="${TRANSPORT_MODE}_loss_${loss_pct}pct"
     local test_report_dir="$REPORT_DIR/$test_name"
     mkdir -p "$test_report_dir"
 
     log "═══════════════════════════════════════════════════════════════"
-    log "  Test: $loss_pct% packet loss, ${DURATION}s duration"
+    log "  Test: $loss_pct% packet loss, ${DURATION}s duration, mode=${TRANSPORT_MODE}"
     log "═══════════════════════════════════════════════════════════════"
 
     PIDS=()
@@ -114,16 +126,16 @@ run_single_test() {
     sleep 0.5
 
     # 3. Start remote receiver (background, runs for DURATION seconds)
-    log "Starting remote receiver..."
+    log "Starting remote receiver (mode=$TRANSPORT_MODE)..."
     "$BINDIR/remote_receiver" "$LOCAL_IP" "$RELAY_PORT" "$DURATION" \
-        "$test_report_dir/remote" \
+        "$test_report_dir/remote" "$TRANSPORT_MODE" \
         > "$test_report_dir/remote_stdout.log" 2>&1 &
     PIDS+=($!)
     sleep 0.5
 
     # 4. Start robot sender (foreground, runs for DURATION seconds)
-    log "Starting robot sender..."
-    "$BINDIR/robot_sender" "$LOCAL_IP" "$RELAY_PORT" "$DURATION" \
+    log "Starting robot sender (mode=$TRANSPORT_MODE)..."
+    "$BINDIR/robot_sender" "$LOCAL_IP" "$RELAY_PORT" "$DURATION" "$TRANSPORT_MODE" \
         > "$test_report_dir/robot.log" 2>&1 &
     PIDS+=($!)
 
@@ -149,7 +161,6 @@ run_single_test() {
         echo ""
     else
         warn "Report file not found: $report_file"
-        # Show stdout logs for debugging
         if [ -f "$test_report_dir/remote_stdout.log" ]; then
             echo "--- remote stdout ---"
             cat "$test_report_dir/remote_stdout.log"
@@ -165,12 +176,13 @@ run_single_test() {
 
 # ── Generate summary ────────────────────────────────────────────────
 generate_summary() {
-    local summary_file="$REPORT_DIR/summary.txt"
+    local summary_file="$REPORT_DIR/summary_${TRANSPORT_MODE}.txt"
     log "Generating summary report: $summary_file"
 
     {
         echo "═══════════════════════════════════════════════════════════════"
         echo "  RoboControl Integration Test — Summary"
+        echo "  Transport Mode: ${TRANSPORT_MODE}"
         echo "═══════════════════════════════════════════════════════════════"
         echo ""
         echo "  Configuration:"
@@ -178,24 +190,44 @@ generate_summary() {
         echo "    Loss rates tested: ${LOSS_RATES[*]}%"
         echo "    Streams per robot: 2 × H.264 @ 1 Mbps each"
         echo "    Total bitrate:     2 Mbps (before loss)"
+        echo "    Transport mode:    ${TRANSPORT_MODE}"
         echo ""
         echo "  Results:"
         echo "  ─────────────────────────────────────────────────────────────"
 
         for loss in "${LOSS_RATES[@]}"; do
-            local report_file="$REPORT_DIR/loss_${loss}pct/remote_report.txt"
+            local report_file="$REPORT_DIR/${TRANSPORT_MODE}_loss_${loss}pct/remote_report.txt"
             echo ""
             echo "  Loss rate: ${loss}%"
             if [ -f "$report_file" ]; then
-                # Extract key metrics
-                local mean=$(grep -A1 "Mean:" "$report_file" | tail -1 | awk '{print $NF}')
-                local stddev=$(grep -A1 "Stddev:" "$report_file" | tail -1 | awk '{print $NF}')
                 local total_pkts=$(grep "Total packets" "$report_file" | awk '{print $NF}')
-                local errors=$(grep "Protocol errors" "$report_file" | awk '{print $NF}')
+                local errors=$(grep "Proto errors" "$report_file" | awk '{print $NF}')
+                local mode_used=$(grep "Transport mode:" "$report_file" | awk '{print $NF}')
+                echo "    Mode:          ${mode_used:-N/A}"
                 echo "    Packets:       ${total_pkts:-N/A}"
                 echo "    Errors:        ${errors:-N/A}"
-                echo "    Latency mean:  ${mean:-N/A} ms"
-                echo "    Latency σ:     ${stddev:-N/A} ms"
+
+                # Extract per-stream latency from the report file
+                for s in 1 2; do
+                    local mean_val=$(awk "/─── Stream $s ───/{found=1} found && /Mean:/{gsub(/[^0-9.]/, \"\", \$NF); print \$NF; found=0}" "$report_file" | head -1)
+                    local sd_val=$(awk "/─── Stream $s ───/{found=1} found && /Stddev:/{gsub(/[^0-9.]/, \"\", \$NF); print \$NF; found=0}" "$report_file" | head -1)
+                    if [ -n "$mean_val" ]; then
+                        echo "    Stream $s latency: mean=${mean_val}ms σ=${sd_val}ms"
+                    fi
+                done
+
+                # Overall latency
+                local overall_mean=$(awk "/Overall/{found=1} found && /Mean:/{gsub(/[^0-9.]/, \"\", \$NF); print \$NF; found=0}" "$report_file" | head -1)
+                local overall_sd=$(awk "/Overall/{found=1} found && /Stddev:/{gsub(/[^0-9.]/, \"\", \$NF); print \$NF; found=0}" "$report_file" | head -1)
+                if [ -n "$overall_mean" ]; then
+                    echo "    Overall latency: mean=${overall_mean}ms σ=${overall_sd}ms"
+                fi
+
+                # Throughput
+                local total_bps=$(awk '/Total:.*Mbps/{for(i=1;i<=NF;i++) if($(i+1)=="Mbps") {gsub(/[^0-9.]/, "", $i); print $i; exit}}' "$report_file")
+                if [ -n "$total_bps" ]; then
+                    echo "    Throughput:    ${total_bps} Mbps"
+                fi
             else
                 echo "    (no report available)"
             fi
@@ -211,6 +243,7 @@ generate_summary() {
 check_bins
 mkdir -p "$REPORT_DIR"
 
+mode "Transport mode: ${TRANSPORT_MODE}"
 log "RoboControl Integration Test Suite"
 log "Duration: ${DURATION}s per test"
 log "Loss rates: ${LOSS_RATES[*]}%"

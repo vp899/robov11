@@ -2,9 +2,13 @@
  * @file robot_sender.c
  * @brief Robot process — sends 2 H.264 video streams via relay.
  *
+ * Supports two transport modes:
+ *   - RELIABLE:  ACK-based retransmission for 100% delivery.
+ *   - REALTIME:  Fire-and-forget for minimum latency.
+ *
  * Each stream has its own independent timer and pacer at 1 Mbps.
  *
- * Usage: ./robot_sender <relay_ip> <relay_port> <duration_sec>
+ * Usage: ./robot_sender <relay_ip> <relay_port> <duration_sec> [reliable|realtime]
  */
 
 #define _GNU_SOURCE
@@ -22,9 +26,11 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <time.h>
+#include <poll.h>
 
 #include "pacing.h"
 #include "h264_gen.h"
+#include "transport_mode.h"
 
 /* ── Protocol ─────────────────────────────────────────────────────── */
 #define RC_MAGIC            0x524F424FU
@@ -32,9 +38,12 @@
 #define RC_HEADER_SIZE      32
 #define RC_MAX_PAYLOAD      1400
 #define RC_PKT_DATA         0x0003
+#define RC_PKT_ACK          0x0004
 #define RC_PKT_RELAY_REG    0x0010
 #define RC_PKT_RELAY_ACK    0x0011
 #define RC_PKT_FIN          0x00FF
+#define RC_FLAG_RELIABLE    (1 << 4)
+#define RC_FLAG_SACK        (1 << 2)
 
 /* ── Stream params ────────────────────────────────────────────────── */
 #define NUM_STREAMS         2
@@ -45,12 +54,46 @@
 #define FPS                 2
 #define MAX_PACKET_PAYLOAD  (RC_MAX_PAYLOAD - 7)
 
+/* ── Retransmission queue ─────────────────────────────────────────── */
+#define RETX_QUEUE_SIZE     8192
+
+typedef struct {
+    uint32_t    seq;
+    uint16_t    stream_id;
+    uint64_t    sent_ts_us;
+    uint32_t    retx_timeout_ms;
+    uint32_t    retx_count;
+    bool        acked;
+    uint8_t    *pkt_data;
+    uint16_t    pkt_len;
+} retx_entry_t;
+
+typedef struct {
+    retx_entry_t entries[RETX_QUEUE_SIZE];
+    uint32_t head;
+    uint32_t tail;
+    uint32_t count;
+    uint64_t fast_retransmits;
+    uint64_t timeout_retransmits;
+    uint64_t total_acked;
+} retx_queue_t;
+
+/* ── Packet header ────────────────────────────────────────────────── */
 typedef struct __attribute__((packed)) {
     uint32_t magic; uint16_t version; uint16_t type;
     uint32_t seq; uint32_t ack; uint64_t timestamp;
     uint16_t payload_len; uint16_t flags; uint32_t conn_id;
 } pkt_hdr_t;
 
+/* ── SACK block ───────────────────────────────────────────────────── */
+typedef struct {
+    uint32_t left_edge;
+    uint32_t right_edge;
+} sack_block_t;
+
+#define MAX_SACK_BLOCKS 4
+
+/* ── Global state ─────────────────────────────────────────────────── */
 static volatile bool g_running = true;
 static void sig_handler(int sig) { (void)sig; g_running = false; }
 
@@ -84,6 +127,101 @@ static void hdr_pack(uint8_t *d, const pkt_hdr_t *h)
     d[30]=(h->conn_id>>8)&0xFF; d[31]=h->conn_id&0xFF;
 }
 
+static int hdr_unpack(pkt_hdr_t *h, const uint8_t *s)
+{
+    h->magic=(s[0]<<24)|(s[1]<<16)|(s[2]<<8)|s[3];
+    if (h->magic!=RC_MAGIC) return -1;
+    h->version=(s[4]<<8)|s[5];
+    h->type=(s[6]<<8)|s[7];
+    h->seq=(s[8]<<24)|(s[9]<<16)|(s[10]<<8)|s[11];
+    h->ack=(s[12]<<24)|(s[13]<<16)|(s[14]<<8)|s[15];
+    h->timestamp=0;
+    for (int i=0;i<8;i++) h->timestamp=(h->timestamp<<8)|s[16+i];
+    h->payload_len=(s[24]<<8)|s[25];
+    h->flags=(s[26]<<8)|s[27];
+    h->conn_id=(s[28]<<24)|(s[29]<<16)|(s[30]<<8)|s[31];
+    return 0;
+}
+
+/* ── Retransmission queue ─────────────────────────────────────────── */
+
+static void retx_init(retx_queue_t *q)
+{
+    memset(q, 0, sizeof(*q));
+}
+
+static void retx_enqueue(retx_queue_t *q, uint32_t seq, uint16_t stream_id,
+                          const uint8_t *pkt, uint16_t pkt_len,
+                          uint32_t rto_ms)
+{
+    if (q->count >= RETX_QUEUE_SIZE) return;
+    retx_entry_t *e = &q->entries[q->tail % RETX_QUEUE_SIZE];
+    e->seq = seq;
+    e->stream_id = stream_id;
+    e->sent_ts_us = now_us();
+    e->retx_timeout_ms = rto_ms;
+    e->retx_count = 0;
+    e->acked = false;
+    e->pkt_len = pkt_len;
+    if (e->pkt_data) free(e->pkt_data);
+    e->pkt_data = malloc(pkt_len);
+    if (e->pkt_data) memcpy(e->pkt_data, pkt, pkt_len);
+    q->tail++;
+    q->count++;
+}
+
+static void retx_process_ack(retx_queue_t *q, uint32_t ack_seq)
+{
+    uint32_t idx = q->head;
+    for (uint32_t i = 0; i < q->count; i++) {
+        retx_entry_t *e = &q->entries[idx % RETX_QUEUE_SIZE];
+        if (!e->acked && e->seq <= ack_seq) {
+            e->acked = true;
+            q->total_acked++;
+        }
+        idx++;
+    }
+    /* Drain acked from head */
+    while (q->count > 0) {
+        retx_entry_t *e = &q->entries[q->head % RETX_QUEUE_SIZE];
+        if (e->acked) {
+            free(e->pkt_data);
+            e->pkt_data = NULL;
+            q->head++;
+            q->count--;
+        } else {
+            break;
+        }
+    }
+}
+
+static int retx_detect_and_retransmit(retx_queue_t *q, int fd,
+                                       const struct sockaddr *dst, socklen_t dst_len)
+{
+    int retransmitted = 0;
+    uint64_t now = now_us();
+    uint32_t idx = q->head;
+
+    for (uint32_t i = 0; i < q->count; i++) {
+        retx_entry_t *e = &q->entries[idx % RETX_QUEUE_SIZE];
+        if (e->acked || !e->pkt_data) { idx++; continue; }
+
+        uint64_t age_ms = (now - e->sent_ts_us) / 1000;
+        if (age_ms >= e->retx_timeout_ms) {
+            /* Retransmit */
+            sendto(fd, e->pkt_data, e->pkt_len, 0, dst, dst_len);
+            e->sent_ts_us = now;
+            e->retx_timeout_ms = (e->retx_timeout_ms < 4000)
+                                  ? e->retx_timeout_ms * 2 : 4000;
+            e->retx_count++;
+            q->timeout_retransmits++;
+            retransmitted++;
+        }
+        idx++;
+    }
+    return retransmitted;
+}
+
 /* ── Stream state ─────────────────────────────────────────────────── */
 typedef struct {
     uint16_t    stream_id;
@@ -93,14 +231,17 @@ typedef struct {
     uint64_t    total_sent;
     uint64_t    total_frames;
     uint64_t    total_pkts;
-    uint64_t    next_frame_us;  /* per-stream frame timer */
+    uint64_t    next_frame_us;
+    uint64_t    retx_pkts;
 } stream_state_t;
 
 static void send_frame(stream_state_t *st, int fd,
                         const struct sockaddr *dst, socklen_t dst_len,
                         uint32_t conn_id,
                         const uint8_t *h264_data, size_t h264_len,
-                        int is_iframe)
+                        int is_iframe,
+                        const transport_config_t *cfg,
+                        retx_queue_t *retx)
 {
     size_t offset = 0;
     while (offset < h264_len && g_running) {
@@ -119,7 +260,9 @@ static void send_frame(stream_state_t *st, int fd,
         uint16_t total_payload = (uint16_t)(chunk + 7);
 
         uint64_t pkt_size = RC_HEADER_SIZE + total_payload;
-        pacer_wait(&st->pacer, pkt_size);
+
+        if (cfg->enable_pacing)
+            pacer_wait(&st->pacer, pkt_size);
 
         pkt_hdr_t hdr = {0};
         hdr.magic = RC_MAGIC;
@@ -129,11 +272,19 @@ static void send_frame(stream_state_t *st, int fd,
         hdr.conn_id = conn_id;
         hdr.timestamp = now_us();
         hdr.payload_len = total_payload;
+        if (cfg->enable_retransmit)
+            hdr.flags |= RC_FLAG_RELIABLE;
 
         uint8_t buf[RC_HEADER_SIZE + RC_MAX_PAYLOAD];
         hdr_pack(buf, &hdr);
         memcpy(buf + RC_HEADER_SIZE, payload, total_payload);
         sendto(fd, buf, pkt_size, 0, dst, dst_len);
+
+        /* Enqueue for retransmission if reliable mode */
+        if (cfg->enable_retransmit && retx) {
+            retx_enqueue(retx, hdr.seq, st->stream_id,
+                         buf, (uint16_t)pkt_size, cfg->retx_timeout_ms);
+        }
 
         st->total_sent += pkt_size;
         st->total_pkts++;
@@ -142,10 +293,11 @@ static void send_frame(stream_state_t *st, int fd,
     st->total_frames++;
 }
 
+/* ── Main ─────────────────────────────────────────────────────────── */
 int main(int argc, char *argv[])
 {
     if (argc < 4) {
-        fprintf(stderr, "Usage: %s <relay_ip> <relay_port> <duration_sec>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <relay_ip> <relay_port> <duration_sec> [reliable|realtime]\n", argv[0]);
         return 1;
     }
     const char *relay_ip = argv[1];
@@ -153,12 +305,28 @@ int main(int argc, char *argv[])
     int duration_sec = atoi(argv[3]);
     if (duration_sec <= 0) duration_sec = 180;
 
+    /* Parse transport mode */
+    transport_mode_t mode = TRANSPORT_REALTIME;
+    if (argc > 4) {
+        if (strcmp(argv[4], "reliable") == 0)
+            mode = TRANSPORT_RELIABLE;
+        else if (strcmp(argv[4], "realtime") == 0)
+            mode = TRANSPORT_REALTIME;
+        else {
+            fprintf(stderr, "Unknown mode: %s (use 'reliable' or 'realtime')\n", argv[4]);
+            return 1;
+        }
+    }
+    transport_config_t tcfg = transport_config_get(mode);
+
     signal(SIGINT, sig_handler);
     signal(SIGTERM, sig_handler);
 
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd < 0) { perror("socket"); return 1; }
-    struct timeval tv = { .tv_sec = 5, .tv_usec = 0 };
+    int bufsize = 4 * 1024 * 1024;
+    setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &bufsize, sizeof(bufsize));
+    struct timeval tv = { .tv_sec = 1, .tv_usec = 0 };
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     struct sockaddr_in relay_addr = {
@@ -171,6 +339,8 @@ int main(int argc, char *argv[])
 
     printf("[ROBOT] Connecting to relay %s:%u for %d seconds\n",
            relay_ip, relay_port, duration_sec);
+    printf("[ROBOT] Transport mode: %s\n", transport_mode_name(mode));
+    transport_config_print(&tcfg, stdout);
     fflush(stdout);
 
     /* ── Register with relay ──────────────────────────────────────── */
@@ -192,11 +362,14 @@ int main(int argc, char *argv[])
         fprintf(stderr, "[ROBOT] Relay registration timeout\n");
         close(fd); return 1;
     }
-    printf("[ROBOT] Registered with relay, session_id=%u\n",
-           ntohl(*(uint32_t *)(rbuf + 28)));
+    printf("[ROBOT] Registered with relay\n");
     fflush(stdout);
 
-    /* ── Initialize streams (each with its own timer) ─────────────── */
+    /* ── Initialize retransmission queue (reliable mode only) ─────── */
+    retx_queue_t retx;
+    retx_init(&retx);
+
+    /* ── Initialize streams ───────────────────────────────────────── */
     stream_state_t streams[NUM_STREAMS];
     uint64_t frame_interval_us = 1000000ULL / FPS;
 
@@ -204,7 +377,6 @@ int main(int argc, char *argv[])
         memset(&streams[i], 0, sizeof(streams[i]));
         streams[i].stream_id = (uint16_t)(i + 1);
         pacer_init(&streams[i].pacer, STREAM_BITRATE_BPS);
-        /* Stagger streams: stream 0 starts at now, stream 1 at now + half interval */
         streams[i].next_frame_us = now_us() + (uint64_t)i * frame_interval_us / NUM_STREAMS;
     }
 
@@ -216,6 +388,7 @@ int main(int argc, char *argv[])
     uint64_t start_ms = now_ms();
     uint64_t end_ms = start_ms + (uint64_t)duration_sec * 1000;
     uint64_t last_report = start_ms;
+    uint64_t last_ack_check = start_ms;
 
     printf("[ROBOT] Sending %d streams × %d fps × %d bps each\n",
            NUM_STREAMS, FPS, STREAM_BITRATE_BPS);
@@ -235,22 +408,52 @@ int main(int argc, char *argv[])
                 h264_len = h264_gen_iframe(iframe_buf, IFRAME_SIZE,
                                             st->stream_id, st->frame_num);
                 send_frame(st, fd, (struct sockaddr *)&relay_addr,
-                           sizeof(relay_addr), conn_id, iframe_buf, h264_len, 1);
+                           sizeof(relay_addr), conn_id, iframe_buf, h264_len, 1,
+                           &tcfg, &retx);
             } else {
                 h264_len = h264_gen_pframe(pframe_buf, PFRAME_SIZE,
                                             st->stream_id, st->frame_num);
                 send_frame(st, fd, (struct sockaddr *)&relay_addr,
-                           sizeof(relay_addr), conn_id, pframe_buf, h264_len, 0);
+                           sizeof(relay_addr), conn_id, pframe_buf, h264_len, 0,
+                           &tcfg, &retx);
             }
 
-            /* Schedule next frame for this stream */
             st->next_frame_us += frame_interval_us;
-            /* If we fell behind, catch up to now */
             if (st->next_frame_us < now) st->next_frame_us = now;
             sent_any = true;
         }
 
-        /* Sleep a bit if nothing to send yet */
+        /* Process ACKs (reliable mode) */
+        if (tcfg.enable_retransmit) {
+            /* Non-blocking ACK receive */
+            uint8_t ack_buf[1024];
+            while (1) {
+                struct pollfd pfd = { .fd = fd, .events = POLLIN };
+                if (poll(&pfd, 1, 0) <= 0) break;
+                ssize_t an = recv(fd, ack_buf, sizeof(ack_buf), 0);
+                if (an < (ssize_t)RC_HEADER_SIZE) break;
+
+                pkt_hdr_t ack_hdr;
+                if (hdr_unpack(&ack_hdr, ack_buf) != 0) continue;
+                if (ack_hdr.type == RC_PKT_ACK) {
+                    retx_process_ack(&retx, ack_hdr.ack);
+                }
+            }
+
+            /* Retransmit detection every 50ms */
+            uint64_t now_ms_val = now_ms();
+            if (now_ms_val - last_ack_check >= 50) {
+                int retx_count = retx_detect_and_retransmit(
+                    &retx, fd, (struct sockaddr *)&relay_addr, sizeof(relay_addr));
+                if (retx_count > 0) {
+                    for (int i = 0; i < NUM_STREAMS; i++)
+                        streams[i].retx_pkts += retx_count / NUM_STREAMS;
+                }
+                last_ack_check = now_ms_val;
+            }
+        }
+
+        /* Sleep if nothing to send */
         if (!sent_any) {
             uint64_t earliest = UINT64_MAX;
             for (int i = 0; i < NUM_STREAMS; i++) {
@@ -271,26 +474,35 @@ int main(int argc, char *argv[])
         uint64_t now_ms_val = now_ms();
         if (now_ms_val - last_report >= 5000) {
             last_report = now_ms_val;
-            printf("[ROBOT] %lus: S1=%luF/%luP S2=%luF/%luP\n",
+            printf("[ROBOT] %lus: S1=%luF/%luP S2=%luF/%luP retx=%lu acked=%lu\n",
                    (unsigned long)((now_ms_val - start_ms) / 1000),
                    (unsigned long)streams[0].total_frames,
                    (unsigned long)streams[0].total_pkts,
                    (unsigned long)streams[1].total_frames,
-                   (unsigned long)streams[1].total_pkts);
+                   (unsigned long)streams[1].total_pkts,
+                   (unsigned long)retx.timeout_retransmits,
+                   (unsigned long)retx.total_acked);
             fflush(stdout);
         }
     }
 
     /* ── Final report ─────────────────────────────────────────────── */
     printf("\n[ROBOT] === Final Report ===\n");
+    printf("[ROBOT] Transport: %s\n", transport_mode_name(mode));
     printf("[ROBOT] Duration: %lu ms\n", (unsigned long)(now_ms() - start_ms));
     for (int i = 0; i < NUM_STREAMS; i++) {
-        printf("[ROBOT] Stream %u: frames=%lu pkts=%lu bytes=%lu rate=%lu bps\n",
+        printf("[ROBOT] Stream %u: frames=%lu pkts=%lu bytes=%lu retx=%lu\n",
                streams[i].stream_id,
                (unsigned long)streams[i].total_frames,
                (unsigned long)streams[i].total_pkts,
                (unsigned long)streams[i].total_sent,
-               (unsigned long)pacer_effective_rate(&streams[i].pacer));
+               (unsigned long)streams[i].retx_pkts);
+    }
+    if (tcfg.enable_retransmit) {
+        printf("[ROBOT] Retransmission stats:\n");
+        printf("[ROBOT]   Fast retx:     %lu\n", (unsigned long)retx.fast_retransmits);
+        printf("[ROBOT]   Timeout retx:  %lu\n", (unsigned long)retx.timeout_retransmits);
+        printf("[ROBOT]   Total acked:   %lu\n", (unsigned long)retx.total_acked);
     }
     fflush(stdout);
 
